@@ -76,22 +76,26 @@ def _add_effect_safe(battle_id: int, side: str, effect_code: str,
 
 def _apply_effect(battle_id: int, side: str, effect_code: str | None,
                   current_phase_abs: int) -> str | None:
-    """Aplica un efecto a un side. Devuelve el código aplicado o None."""
+    """Aplica un efecto a un side. Devuelve el código aplicado o None.
+    Efectos con applies_to=ENTORNO se guardan siempre bajo side='ENTORNO'."""
     if not effect_code:
         return None
     effect_def = rules.get_combat_effect(effect_code)
     if not effect_def:
         return None
 
+    # Efectos de entorno van al lado ENTORNO sin importar quién los activó
+    effective_side = "ENTORNO" if effect_def["applies_to"] == "ENTORNO" else side
+
     duration = effect_def["duration_phases"]
     if duration == -1:
-        expires = None          # permanente
+        expires = None
     elif duration == 0:
-        expires = current_phase_abs  # next_phase = expira al final de esta fase
+        expires = current_phase_abs
     else:
         expires = current_phase_abs + duration
 
-    _add_effect_safe(battle_id, side, effect_code, expires, source="outcome_matrix")
+    _add_effect_safe(battle_id, effective_side, effect_code, expires, source="outcome_matrix")
 
     # CAIDO: automáticamente da HIPEROFFENSIVO al oponente si no tiene debuff
     if effect_code == "CAIDO":
