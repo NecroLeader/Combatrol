@@ -76,12 +76,13 @@ def import_matrix_csv(csv_path: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--seed-matrix", metavar="CSV", help="Path al outcome_matrix_seed.csv")
+    parser.add_argument("--seed-matrix", metavar="CSV", action="append",
+                        help="Path a un CSV de outcome_matrix (se puede repetir)")
     args = parser.parse_args()
 
     init_db()
 
-    if args.seed_matrix:
-        import_matrix_csv(args.seed_matrix)
+    for csv_path in (args.seed_matrix or []):
+        import_matrix_csv(csv_path)
 
     print("[init_db] Listo.")
