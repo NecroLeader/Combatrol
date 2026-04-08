@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Combatrol</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Combatrol</h1>
+    <p class="subtitle">Simulador de Batalla por Fases</p>
+
+    <div class="card">
+      <h2>Nueva Batalla</h2>
+      <div class="form-row">
+        <label>Modo</label>
+        <select id="mode">
+          <option value="SIMULATION">Simulation (IA vs IA)</option>
+          <option value="PVE">PVE (Humano vs IA)</option>
+          <option value="PVP">PVP (Humano vs Humano)</option>
+        </select>
+      </div>
+      <div class="form-row">
+        <label>Arena</label>
+        <select id="arena">
+          <option value="">Random</option>
+          <option value="campo_abierto">Campo Abierto</option>
+          <option value="sala_armeria">Sala de Armería</option>
+          <option value="precipicio">Borde del Precipicio</option>
+          <option value="bodega">Bodega</option>
+          <option value="espacio_reducido">Espacio Reducido</option>
+          <option value="niebla">Campo con Niebla</option>
+        </select>
+      </div>
+      <button id="btn-start" onclick="startBattle()">Iniciar Batalla</button>
+    </div>
+
+    <div class="card" id="battle-panel" style="display:none">
+      <h2>Batalla <span id="battle-id"></span></h2>
+      <div class="status-row">
+        <div class="fighter">
+          <div class="fighter-name">P1</div>
+          <div class="counters">Contadores: <span id="cnt-p1">0</span> / 15</div>
+          <div class="effects" id="fx-p1"></div>
+        </div>
+        <div class="vs">VS</div>
+        <div class="fighter">
+          <div class="fighter-name">P2</div>
+          <div class="counters">Contadores: <span id="cnt-p2">0</span> / 15</div>
+          <div class="effects" id="fx-p2"></div>
+        </div>
+      </div>
+
+      <div id="phase-controls">
+        <div id="sim-controls">
+          <button onclick="simulateTurn()">Simular Turno (IA)</button>
+          <button onclick="simulateAll()">Simular hasta el Final</button>
+        </div>
+      </div>
+
+      <div id="log-panel">
+        <h3>Log de Batalla</h3>
+        <div id="log-entries"></div>
+      </div>
+    </div>
+  </div>
+  <script src="/js/api.js"></script>
+  <script src="/js/state.js"></script>
+  <script src="/js/battle.js"></script>
+</body>
+</html>

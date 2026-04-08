@@ -1,0 +1,399 @@
+"""
+Resolver principal — implementa el flujo de 11 pasos del GDD.
+
+resolve_phase(battle_id, action_p1, action_p2) → PhaseResult
+"""
+
+import random
+import json
+from app import config
+from app.repositories import rules_repo as rules
+from app.repositories import battle_repo as repo
+from app.engine.narrative import select_narrative, collect_active_tags
+from app.schemas.battle import PhaseResult
+
+CAP = 25.0   # máximo de tirada efectiva antes de MOMENTUM_OVERFLOW
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _phase_abs(turn: int, phase: int) -> int:
+    """Número de fase absoluta (para expiración de efectos)."""
+    return (turn - 1) * config.PHASES_PER_TURN + phase
+
+
+def _sum_mods(battle_id: int, side: str) -> float:
+    """Suma los power_mod de todos los efectos activos para un lado."""
+    effects = repo.get_active_effects(battle_id, side)
+    total = 0.0
+    for eff in effects:
+        effect_def = rules.get_combat_effect(eff["effect_code"])
+        if effect_def:
+            total += effect_def["power_mod"]
+    return total
+
+
+def _roll_dice(battle_id: int, side: str) -> tuple[int, float]:
+    """Tira 1d20 y aplica modificadores. Devuelve (raw, effective)."""
+    raw = random.randint(1, 20)
+    mods = _sum_mods(battle_id, side)
+    effective = raw + mods
+    # Cap superior: overflow → MOMENTUM_OVERFLOW
+    if effective > CAP:
+        overflow = effective - CAP
+        effective = CAP
+        # El efecto MOMENTUM_OVERFLOW se aplica como +overflow en la siguiente fase
+        # Lo guardamos como efecto temporal con power_mod = overflow
+        # (simplificado: el engine lo trata como modificador de 1 fase)
+        _add_effect_safe(battle_id, side, "MOMENTUM_OVERFLOW",
+                         expires_at_phase=None,  # se maneja por turno
+                         source=f"overflow:{overflow:.1f}")
+    # Cap inferior: -4 mínimo (COLAPSO)
+    effective = max(-4.0, effective)
+    return raw, effective
+
+
+def _weighted_choice(candidates: list[dict], battle_id: int,
+                     active_states_p1: list[str],
+                     active_states_p2: list[str]) -> dict:
+    """Elige un outcome de la lista aplicando multiplicadores de estado."""
+    all_states = list(set(active_states_p1 + active_states_p2))
+    weights = []
+    for c in candidates:
+        w = c["base_weight"] * rules.get_state_multipliers(c["outcome_code"], all_states)
+        weights.append(max(w, 0.001))
+    return random.choices(candidates, weights=weights, k=1)[0]
+
+
+def _add_effect_safe(battle_id: int, side: str, effect_code: str,
+                     expires_at_phase: int | None, source: str) -> None:
+    """Agrega efecto solo si no está ya activo (evita duplicados de permanentes)."""
+    if not repo.has_effect(battle_id, side, effect_code):
+        repo.add_effect(battle_id, side, effect_code, expires_at_phase, source)
+
+
+def _apply_effect(battle_id: int, side: str, effect_code: str | None,
+                  current_phase_abs: int) -> str | None:
+    """Aplica un efecto a un side. Devuelve el código aplicado o None."""
+    if not effect_code:
+        return None
+    effect_def = rules.get_combat_effect(effect_code)
+    if not effect_def:
+        return None
+
+    duration = effect_def["duration_phases"]
+    if duration == -1:
+        expires = None          # permanente
+    elif duration == 0:
+        expires = current_phase_abs  # next_phase = expira al final de esta fase
+    else:
+        expires = current_phase_abs + duration
+
+    _add_effect_safe(battle_id, side, effect_code, expires, source="outcome_matrix")
+
+    # CAIDO: automáticamente da HIPEROFFENSIVO al oponente si no tiene debuff
+    if effect_code == "CAIDO":
+        opp = "P2" if side == "P1" else "P1"
+        opp_effects = repo.get_active_effect_codes(battle_id, opp)
+        debuffs = {"DESARMADO", "ARMA_ROTA", "DESMEMBRADO", "CAIDO",
+                   "POS_DESFAVORABLE", "FATIGA", "VACILACION", "PANICO"}
+        if not any(e in debuffs for e in opp_effects):
+            _add_effect_safe(battle_id, opp, "HIPEROFFENSIVO", current_phase_abs, "caido_bonus")
+
+    return effect_code
+
+
+def _check_fatiga(battle_id: int, side: str, action: str, current_phase_abs: int) -> None:
+    """Penaliza spam de ATK con FATIGA."""
+    state = repo.get_battle_state(battle_id, side)
+    if not state:
+        return
+    streak = state["atk_streak"]
+    if action == "ATK":
+        streak += 1
+        if streak >= config.ATK_SPAM_FATIGUE_THRESHOLD:
+            # Dura hasta la primera fase del turno siguiente (≈3 fases)
+            _add_effect_safe(battle_id, side, "FATIGA", current_phase_abs + 3, "atk_spam")
+            streak = 0
+    else:
+        streak = 0
+    repo.update_atk_streak(battle_id, side, streak)
+
+
+def _update_accumulators(battle_id: int, side: str, opp_side: str,
+                         effective: float, opp_effective: float,
+                         roll_winner_is_me: bool, turn: int) -> None:
+    acc = repo.get_accumulators(battle_id, side)
+    if not acc:
+        return
+
+    new_roll_sum = acc["roll_sum"] + effective
+    new_roll_sum_opp = acc["roll_sum_opp"] + opp_effective
+    new_20s = acc["twenties_count"] + (1 if effective >= 20 else 0)
+    new_consec_high = (acc["consecutive_high"] + 1) if effective >= 17 else 0
+
+    # low_streak: tiradas efectivas ≤ threshold
+    if effective <= config.LOW_ROLL_THRESHOLD:
+        new_low_streak = acc["low_streak"] + 1
+    else:
+        new_low_streak = 0
+
+    new_turns_won = acc["turns_won"] + (1 if roll_winner_is_me else 0)
+    new_consec_wins = (acc["consecutive_wins"] + 1) if roll_winner_is_me else 0
+
+    repo.update_accumulators(
+        battle_id, side,
+        roll_sum=new_roll_sum,
+        roll_sum_opp=new_roll_sum_opp,
+        twenties_count=new_20s,
+        low_streak=new_low_streak,
+        turns_won=new_turns_won,
+        consecutive_high=new_consec_high,
+        consecutive_wins=new_consec_wins,
+    )
+
+    # Punición por low_streak
+    phase_abs = _phase_abs(turn, 1)  # se activa en la siguiente fase
+    if new_low_streak >= config.LOW_STREAK_PANICO and not repo.has_effect(battle_id, side, "PANICO"):
+        _add_effect_safe(battle_id, side, "PANICO", phase_abs + 3, "low_streak")
+    elif new_low_streak >= config.LOW_STREAK_VACILACION and not repo.has_effect(battle_id, side, "VACILACION"):
+        _add_effect_safe(battle_id, side, "VACILACION", phase_abs + 6, "low_streak")
+
+
+def _apply_recovery(battle_id: int, turn: int) -> None:
+    """Cada RECOVERY_INTERVAL_TURNS recupera 0.5 contadores a quienes corresponda."""
+    if turn % config.RECOVERY_INTERVAL_TURNS != 0:
+        return
+    for side in ("P1", "P2"):
+        state = repo.get_battle_state(battle_id, side)
+        if not state:
+            continue
+        if state["recovery_blocked_until_turn"] >= turn:
+            continue
+        new_cnt = max(0.0, state["counters"] - config.RECOVERY_AMOUNT)
+        repo.update_counters(battle_id, side, new_cnt)
+
+
+def _counter_dmg_for_side(outcome: dict, is_player_A: bool) -> float:
+    """Devuelve el daño que recibe este jugador según si es A o B en el par."""
+    if is_player_A:
+        return outcome["counter_dmg_A"]
+    return outcome["counter_dmg_B"]
+
+
+def _effect_for_side(outcome: dict, is_player_A: bool) -> str | None:
+    if is_player_A:
+        return outcome.get("effect_A")
+    return outcome.get("effect_B")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# RESOLVE PHASE — flujo principal
+# ─────────────────────────────────────────────────────────────────────────────
+
+def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult:
+    """Implementa el flujo de 11 pasos del GDD."""
+
+    # ── Paso 0: estado actual ────────────────────────────────────────────────
+    battle = repo.get_battle(battle_id)
+    if not battle or battle["status"] == "FINISHED":
+        raise ValueError(f"Batalla {battle_id} no existe o ya terminó.")
+
+    turn   = battle["turn_number"]
+    phase  = battle["phase_number"]
+    phase_abs = _phase_abs(turn, phase)
+
+    # Expirar efectos vencidos
+    repo.expire_effects(battle_id, phase_abs)
+
+    state_p1 = repo.get_battle_state(battle_id, "P1")
+    state_p2 = repo.get_battle_state(battle_id, "P2")
+
+    # CAIDO: el jugador no puede actuar — forzamos a la única opción válida
+    if repo.has_effect(battle_id, "P1", "CAIDO"):
+        action_p1 = "INT"
+    if repo.has_effect(battle_id, "P2", "CAIDO"):
+        action_p2 = "INT"
+
+    # ── Paso 1: spam ATK check ────────────────────────────────────────────────
+    _check_fatiga(battle_id, "P1", action_p1, phase_abs)
+    _check_fatiga(battle_id, "P2", action_p2, phase_abs)
+
+    # ── Paso 2: tiradas ──────────────────────────────────────────────────────
+    roll_p1, eff_p1 = _roll_dice(battle_id, "P1")
+    roll_p2, eff_p2 = _roll_dice(battle_id, "P2")
+
+    # ── Paso 3: clasificar ───────────────────────────────────────────────────
+    power_p1 = rules.get_power_level(eff_p1)
+    power_p2 = rules.get_power_level(eff_p2)
+    difference = abs(eff_p1 - eff_p2)
+    diff_band = rules.get_difference_band(difference)
+    power_context = rules.get_power_context(power_p1, power_p2)
+
+    # ── Paso 4: par de acción ────────────────────────────────────────────────
+    action_pair = f"{action_p1}_{action_p2}"
+
+    # "A" en el par = quien eligió la acción de la izquierda = P1
+    # "B" = P2
+    p1_is_A = True
+
+    # ── Paso 5: consultar outcome_matrix ────────────────────────────────────
+    active_p1 = repo.get_active_effect_codes(battle_id, "P1")
+    active_p2 = repo.get_active_effect_codes(battle_id, "P2")
+
+    candidates = rules.get_outcome(action_pair, diff_band, power_context)
+    if not candidates:
+        # fallback de emergencia (no debería ocurrir si el seed está bien)
+        outcome = {
+            "outcome_code": "FALLBACK_EMERGENCIA",
+            "phase_winner": "NONE",
+            "counter_dmg_A": 0.5,
+            "counter_dmg_B": 0.5,
+            "effect_A": None,
+            "effect_B": None,
+            "base_weight": 1.0,
+            "narrative_pool_tag": "GENERIC_INTERCAMBIO",
+            "is_fatal": 0,
+        }
+    else:
+        outcome = _weighted_choice(candidates, battle_id, active_p1, active_p2)
+
+    # ── Paso 6: aplicar efectos ──────────────────────────────────────────────
+    # Determinar qué efecto va a P1 (A) y cuál a P2 (B)
+    effect_for_p1 = _effect_for_side(outcome, is_player_A=p1_is_A)
+    effect_for_p2 = _effect_for_side(outcome, is_player_A=not p1_is_A)
+
+    applied_p1 = _apply_effect(battle_id, "P1", effect_for_p1, phase_abs)
+    applied_p2 = _apply_effect(battle_id, "P2", effect_for_p2, phase_abs)
+
+    # ── Paso 7: actualizar contadores ────────────────────────────────────────
+    dmg_p1 = _counter_dmg_for_side(outcome, is_player_A=p1_is_A)
+    dmg_p2 = _counter_dmg_for_side(outcome, is_player_A=not p1_is_A)
+
+    new_cnt_p1 = state_p1["counters"] + dmg_p1
+    new_cnt_p2 = state_p2["counters"] + dmg_p2
+
+    # DESMEMBRADO: cap de 15 baja a 10 (permanente)
+    max_p1 = 10.0 if repo.has_effect(battle_id, "P1", "DESMEMBRADO") else config.MAX_COUNTERS
+    max_p2 = 10.0 if repo.has_effect(battle_id, "P2", "DESMEMBRADO") else config.MAX_COUNTERS
+
+    repo.update_counters(battle_id, "P1", min(new_cnt_p1, max_p1))
+    repo.update_counters(battle_id, "P2", min(new_cnt_p2, max_p2))
+
+    state_p1 = repo.get_battle_state(battle_id, "P1")
+    state_p2 = repo.get_battle_state(battle_id, "P2")
+
+    # Bloquear recovery si recibió crítico (daño ≥ 3.0)
+    if dmg_p1 >= 3.0:
+        repo.block_recovery(battle_id, "P1", turn + config.RECOVERY_INTERVAL_TURNS)
+    if dmg_p2 >= 3.0:
+        repo.block_recovery(battle_id, "P2", turn + config.RECOVERY_INTERVAL_TURNS)
+
+    # ── Paso 8: acumuladores y racha ─────────────────────────────────────────
+    roll_winner_p1 = eff_p1 > eff_p2
+    roll_winner_p2 = eff_p2 > eff_p1
+    _update_accumulators(battle_id, "P1", "P2", eff_p1, eff_p2, roll_winner_p1, turn)
+    _update_accumulators(battle_id, "P2", "P1", eff_p2, eff_p1, roll_winner_p2, turn)
+
+    if eff_p1 == eff_p2:
+        roll_winner = "NONE"
+    elif eff_p1 > eff_p2:
+        roll_winner = "P1"
+    else:
+        roll_winner = "P2"
+
+    # Recuperación cada 3 turnos completos (solo al final de la fase 3)
+    if phase == config.PHASES_PER_TURN:
+        _apply_recovery(battle_id, turn)
+
+    # ── Paso 9: narrativa ────────────────────────────────────────────────────
+    all_active_effects_p1 = repo.get_active_effects(battle_id, "P1")
+    all_active_effects_p2 = repo.get_active_effects(battle_id, "P2")
+    all_active_effects = all_active_effects_p1 + all_active_effects_p2
+
+    active_tags = collect_active_tags(all_active_effects, [], [])
+    narrative = select_narrative(outcome["narrative_pool_tag"], active_tags)
+
+    # ── Paso 10: verificar condición de fin ──────────────────────────────────
+    battle_over = False
+    winner = None
+    cnt_p1 = state_p1["counters"]
+    cnt_p2 = state_p2["counters"]
+
+    if cnt_p1 >= max_p1:
+        battle_over = True
+        winner = "P2"
+        repo.finish_battle(battle_id, "P2")
+    elif cnt_p2 >= max_p2:
+        battle_over = True
+        winner = "P1"
+        repo.finish_battle(battle_id, "P1")
+
+    # ── Paso 11: persistir log ───────────────────────────────────────────────
+    repo.log_phase(battle_id, {
+        "turn_number": turn,
+        "phase_number": phase,
+        "action_p1": action_p1,
+        "action_p2": action_p2,
+        "roll_p1": roll_p1,
+        "roll_p2": roll_p2,
+        "effective_p1": eff_p1,
+        "effective_p2": eff_p2,
+        "power_p1": power_p1,
+        "power_p2": power_p2,
+        "difference": difference,
+        "difference_band": diff_band,
+        "power_context": power_context,
+        "action_pair": action_pair,
+        "outcome_code": outcome["outcome_code"],
+        "phase_winner": outcome["phase_winner"],
+        "roll_winner": roll_winner,
+        "counter_dmg_p1": dmg_p1,
+        "counter_dmg_p2": dmg_p2,
+        "counters_p1": cnt_p1,
+        "counters_p2": cnt_p2,
+        "effect_applied_p1": applied_p1,
+        "effect_applied_p2": applied_p2,
+        "narrative_text": narrative,
+    })
+
+    # Avanzar turn/phase
+    if not battle_over:
+        next_phase = phase + 1
+        next_turn = turn
+        if next_phase > config.PHASES_PER_TURN:
+            next_phase = 1
+            next_turn = turn + 1
+        repo.update_battle_turn(battle_id, next_turn, next_phase)
+
+    return PhaseResult(
+        battle_id=battle_id,
+        turn_number=turn,
+        phase_number=phase,
+        action_p1=action_p1,
+        action_p2=action_p2,
+        roll_p1=roll_p1,
+        roll_p2=roll_p2,
+        effective_p1=eff_p1,
+        effective_p2=eff_p2,
+        power_p1=power_p1,
+        power_p2=power_p2,
+        difference=difference,
+        difference_band=diff_band,
+        power_context=power_context,
+        action_pair=action_pair,
+        outcome_code=outcome["outcome_code"],
+        phase_winner=outcome["phase_winner"],
+        roll_winner=roll_winner,
+        counter_dmg_p1=dmg_p1,
+        counter_dmg_p2=dmg_p2,
+        counters_p1=cnt_p1,
+        counters_p2=cnt_p2,
+        effect_applied_p1=applied_p1,
+        effect_applied_p2=applied_p2,
+        narrative_text=narrative,
+        battle_over=battle_over,
+        winner=winner,
+    )
