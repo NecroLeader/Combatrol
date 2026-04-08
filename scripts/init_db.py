@@ -26,6 +26,9 @@ def init_db():
     if Path("data/seed_narratives_v2.sql").exists():
         execute_script("data/seed_narratives_v2.sql")
         print("[init_db] Narrativas v2 aplicadas.")
+    if Path("data/seed_narratives_v3.sql").exists():
+        execute_script("data/seed_narratives_v3.sql")
+        print("[init_db] Narrativas v3 aplicadas.")
 
 
 def import_matrix_csv(csv_path: str):
