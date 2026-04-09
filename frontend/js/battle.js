@@ -21,21 +21,27 @@ document.getElementById('btn-back').addEventListener('click', () => {
   State.running  = false;
 });
 
-async function startBattle() {
-  const nameP1   = document.getElementById('cfg-name-p1').value.trim() || 'P1';
-  const nameP2   = document.getElementById('cfg-name-p2').value.trim() || 'P2';
-  const arena    = document.getElementById('cfg-arena').value   || null;
-  const weaponP1 = document.getElementById('cfg-weapon-p1').value || null;
-  const weaponP2 = document.getElementById('cfg-weapon-p2').value || null;
+async function startBattle(config = null) {
+  const nameP1   = config?.nameP1   ?? document.getElementById('cfg-name-p1').value.trim() || 'P1';
+  const nameP2   = config?.nameP2   ?? document.getElementById('cfg-name-p2').value.trim() || 'P2';
+  const arena    = config?.arena    ?? document.getElementById('cfg-arena').value   || null;
+  const weaponP1 = config?.weaponP1 ?? document.getElementById('cfg-weapon-p1').value || null;
+  const weaponP2 = config?.weaponP2 ?? document.getElementById('cfg-weapon-p2').value || null;
+  const mode     = config?.mode     ?? State.mode;
+
+  // Guardar config para rematch
+  State.lastConfig = { nameP1, nameP2, arena, weaponP1, weaponP2, mode };
+  State.mode = mode;
+  State.phases = [];
 
   try {
     const data = await apiPost('/battle/start', {
-      mode:      State.mode,
+      mode:       mode,
       arena_code: arena,
-      weapon_p1: weaponP1,
-      weapon_p2: weaponP2,
-      name_p1:   nameP1,
-      name_p2:   nameP2,
+      weapon_p1:  weaponP1,
+      weapon_p2:  weaponP2,
+      name_p1:    nameP1,
+      name_p2:    nameP2,
     });
 
     State.battleId = data.battle_id;
@@ -245,6 +251,7 @@ function resetCards() {
 ══════════════════════════════════════ */
 
 function renderPhase(p) {
+  State.phases.push(p);
   const el = document.createElement('div');
   el.className = 'log-entry';
   el.dataset.winner = p.winner || '';
@@ -317,9 +324,59 @@ function toggleMath() {
 function showWinner(side) {
   const name = side === 'P1' ? State.nameP1 : side === 'P2' ? State.nameP2 : side;
   document.getElementById('winner-name').textContent = name;
+  document.getElementById('battle-summary').innerHTML = buildSummary(side);
   document.getElementById('winner-overlay').style.display = 'flex';
   document.getElementById('btn-roll').disabled = true;
   document.getElementById('btn-sim-all').disabled = true;
+}
+
+function buildSummary(winningSide) {
+  const phases = State.phases;
+  if (!phases.length) return '';
+
+  const loserSide = winningSide === 'P1' ? 'P2' : 'P1';
+  const loserName = loserSide === 'P1' ? State.nameP1 : State.nameP2;
+  const winnerName = winningSide === 'P1' ? State.nameP1 : State.nameP2;
+
+  const turns = phases[phases.length - 1]?.turn_number ?? 1;
+  const totalPhases = phases.length;
+
+  // Counters dealt to the loser
+  const dmgKey = `counter_dmg_${loserSide.toLowerCase()}`;
+  const totalDmg = phases.reduce((s, p) => s + (p[dmgKey] ?? 0), 0);
+  const maxHit = Math.max(...phases.map(p => p[dmgKey] ?? 0));
+  const finalCounters = phases[phases.length - 1]?.[`counters_${loserSide.toLowerCase()}`]?.toFixed(1) ?? '?';
+
+  // Effects that appeared
+  const effectsP1 = phases.map(p => p.effect_applied_p1).filter(Boolean);
+  const effectsP2 = phases.map(p => p.effect_applied_p2).filter(Boolean);
+  const loserEffects = loserSide === 'P1' ? effectsP1 : effectsP2;
+  const uniqueEffects = [...new Set(loserEffects)];
+
+  // Decisive phase
+  const finisher = phases.find(p => p.battle_over);
+  const finisherPair = finisher?.action_pair ?? '?';
+
+  const row = (label, val, cls = '') =>
+    `<div class="summary-row"><span class="summary-label">${label}</span><span class="summary-val ${cls}">${val}</span></div>`;
+
+  return `
+    <div class="summary-section-title">Resultado</div>
+    ${row('Ganador', winnerName, 'highlight')}
+    ${row('Turnos jugados', turns)}
+    ${row('Fases totales', totalPhases)}
+    <div class="summary-section-title">Daño recibido por ${loserName}</div>
+    ${row('Contadores finales', `${finalCounters} / 15`, parseFloat(finalCounters) >= 15 ? 'bad' : '')}
+    ${row('Daño total recibido', totalDmg.toFixed(1))}
+    ${row('Mayor golpe único', `+${maxHit}`, maxHit >= 3 ? 'bad' : '')}
+    ${row('Par de acciones decisivo', finisherPair)}
+    ${uniqueEffects.length ? `<div class="summary-section-title">Efectos sufridos</div>${uniqueEffects.map(e => row(e, '')).join('')}` : ''}
+  `;
+}
+
+async function rematch() {
+  document.getElementById('winner-overlay').style.display = 'none';
+  await startBattle(State.lastConfig);
 }
 
 /* ══════════════════════════════════════
