@@ -566,7 +566,7 @@ function _renderCarouselCard(idx, direction) {
     (p.roll_winner === 'P2' && p.phase_winner === 'A')
   );
   const effectsHtml = [p.effect_applied_p1, p.effect_applied_p2]
-    .filter(Boolean).map(e => `<span class="tag">${e}</span>`).join(' ');
+    .filter(Boolean).map(e => effectTag(e)).join(' ');
 
   const track = document.getElementById('carousel-track');
   const slideClass = direction === 'left' ? 'carousel-slide-left' : 'carousel-slide-right';
