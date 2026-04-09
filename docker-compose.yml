@@ -6,32 +6,12 @@ services:
     env_file: .env
     volumes:
       - ./data:/app/data
+    networks:
+      - worldz_net
     expose:
       - "8000"
 
-  nginx:
-    image: nginx:alpine
-    container_name: combatrol_nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - certbot_certs:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    depends_on:
-      - combatrol
-
-  certbot:
-    image: certbot/certbot
-    container_name: combatrol_certbot
-    volumes:
-      - certbot_certs:/etc/letsencrypt
-      - certbot_www:/var/www/certbot
-    # Renueva automáticamente cada 12h
-    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
-
-volumes:
-  certbot_certs:
-  certbot_www:
+networks:
+  worldz_net:
+    external: true
+    name: worldz_net
