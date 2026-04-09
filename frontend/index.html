@@ -7,24 +7,46 @@
   <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Combatrol</h1>
+
+<!-- ═══════════════════════════════════════
+     PANTALLA DE SETUP
+═══════════════════════════════════════ -->
+<div id="view-setup" class="view active">
+  <div class="setup-container">
+    <h1 class="title">COMBATROL</h1>
     <p class="subtitle">Simulador de Batalla por Fases</p>
 
-    <div class="card">
-      <h2>Nueva Batalla</h2>
-      <div class="form-row">
-        <label>Modo</label>
-        <select id="mode">
-          <option value="SIMULATION">Simulation (IA vs IA)</option>
-          <option value="PVE">PVE (Humano vs IA)</option>
-          <option value="PVP">PVP (Humano vs Humano)</option>
-        </select>
+    <!-- Selección de modo -->
+    <div class="mode-grid">
+      <button class="mode-card active" data-mode="SIMULATION">
+        <span class="mode-icon">⚙</span>
+        <span class="mode-name">SIMULACIÓN</span>
+        <span class="mode-desc">IA vs IA — mirá cómo se resuelve</span>
+      </button>
+      <button class="mode-card" data-mode="PVE">
+        <span class="mode-icon">⚔</span>
+        <span class="mode-name">TÚ vs IA</span>
+        <span class="mode-desc">Elegís tus acciones, IA elige las del rival</span>
+      </button>
+      <button class="mode-card" data-mode="PVP">
+        <span class="mode-icon">👥</span>
+        <span class="mode-name">PVP</span>
+        <span class="mode-desc">Dos jugadores, mismo dispositivo</span>
+      </button>
+    </div>
+
+    <!-- Configuración -->
+    <div class="setup-config card">
+      <div class="config-row">
+        <label>Nombre P1</label>
+        <input id="cfg-name-p1" type="text" placeholder="Jugador 1" maxlength="16" value="P1">
+        <label>Nombre P2</label>
+        <input id="cfg-name-p2" type="text" placeholder="Jugador 2" maxlength="16" value="P2">
       </div>
-      <div class="form-row">
+      <div class="config-row">
         <label>Arena</label>
-        <select id="arena">
-          <option value="">Random</option>
+        <select id="cfg-arena">
+          <option value="">Aleatoria</option>
           <option value="campo_abierto">Campo Abierto</option>
           <option value="sala_armeria">Sala de Armería</option>
           <option value="precipicio">Borde del Precipicio</option>
@@ -32,41 +54,165 @@
           <option value="espacio_reducido">Espacio Reducido</option>
           <option value="niebla">Campo con Niebla</option>
         </select>
+        <label>Arma P1</label>
+        <select id="cfg-weapon-p1">
+          <option value="">Aleatoria</option>
+          <option value="espada">Espada</option>
+          <option value="mandoble">Mandoble</option>
+          <option value="daga">Daga</option>
+        </select>
+        <label>Arma P2</label>
+        <select id="cfg-weapon-p2">
+          <option value="">Aleatoria</option>
+          <option value="espada">Espada</option>
+          <option value="mandoble">Mandoble</option>
+          <option value="daga">Daga</option>
+        </select>
       </div>
-      <button id="btn-start" onclick="startBattle()">Iniciar Batalla</button>
     </div>
 
-    <div class="card" id="battle-panel" style="display:none">
-      <h2>Batalla <span id="battle-id"></span></h2>
-      <div class="status-row">
-        <div class="fighter">
-          <div class="fighter-name">P1</div>
-          <div class="counters">Contadores: <span id="cnt-p1">0</span> / 15</div>
-          <div class="effects" id="fx-p1"></div>
-        </div>
-        <div class="vs">VS</div>
-        <div class="fighter">
-          <div class="fighter-name">P2</div>
-          <div class="counters">Contadores: <span id="cnt-p2">0</span> / 15</div>
-          <div class="effects" id="fx-p2"></div>
+    <button id="btn-start" class="btn-primary btn-large">Iniciar Batalla</button>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════
+     PANTALLA DE BATALLA
+═══════════════════════════════════════ -->
+<div id="view-battle" class="view">
+
+  <!-- Header -->
+  <div class="battle-header">
+    <button class="btn-ghost" id="btn-back">← Nueva batalla</button>
+    <div class="battle-info">
+      Batalla <span id="b-id">#?</span> &nbsp;·&nbsp;
+      <span id="b-mode"></span> &nbsp;·&nbsp;
+      Arena: <span id="b-arena"></span>
+    </div>
+    <button class="btn-ghost" id="btn-math-toggle" onclick="toggleMath()">
+      Mostrar math
+    </button>
+  </div>
+
+  <!-- Tarjetas de jugadores -->
+  <div class="players-row">
+    <div class="player-card" id="card-p1">
+      <div class="pcard-name" id="p1-name">P1</div>
+      <div class="pcard-weapon" id="p1-weapon"></div>
+      <div class="counter-track">
+        <div class="counter-bar" id="p1-bar"></div>
+      </div>
+      <div class="counter-num"><span id="p1-cnt">0.0</span> <span class="cnt-max">/ 15</span></div>
+      <div class="pcard-effects" id="p1-effects"></div>
+    </div>
+
+    <div class="vs-sep">VS</div>
+
+    <div class="player-card" id="card-p2">
+      <div class="pcard-name" id="p2-name">P2</div>
+      <div class="pcard-weapon" id="p2-weapon"></div>
+      <div class="counter-track">
+        <div class="counter-bar" id="p2-bar"></div>
+      </div>
+      <div class="counter-num"><span id="p2-cnt">0.0</span> <span class="cnt-max">/ 15</span></div>
+      <div class="pcard-effects" id="p2-effects"></div>
+    </div>
+  </div>
+
+  <!-- Selección de acciones (PVE / PVP) -->
+  <div id="action-panel" class="card" style="display:none">
+    <div class="action-panel-title">Elegí tus acciones para este turno</div>
+    <div class="phases-grid">
+      <div class="phase-row" id="phase-row-0">
+        <span class="phase-label">Fase 1</span>
+        <div class="action-btns">
+          <button class="action-btn" data-phase="0" data-action="ATK">⚔ Atacar</button>
+          <button class="action-btn" data-phase="0" data-action="DEF">🛡 Defender</button>
+          <button class="action-btn" data-phase="0" data-action="INT">🔀 Maniobrar</button>
         </div>
       </div>
-
-      <div id="phase-controls">
-        <div id="sim-controls">
-          <button onclick="simulateTurn()">Simular Turno (IA)</button>
-          <button onclick="simulateAll()">Simular hasta el Final</button>
+      <div class="phase-row" id="phase-row-1">
+        <span class="phase-label">Fase 2</span>
+        <div class="action-btns">
+          <button class="action-btn" data-phase="1" data-action="ATK">⚔ Atacar</button>
+          <button class="action-btn" data-phase="1" data-action="DEF">🛡 Defender</button>
+          <button class="action-btn" data-phase="1" data-action="INT">🔀 Maniobrar</button>
         </div>
       </div>
-
-      <div id="log-panel">
-        <h3>Log de Batalla</h3>
-        <div id="log-entries"></div>
+      <div class="phase-row" id="phase-row-2">
+        <span class="phase-label">Fase 3</span>
+        <div class="action-btns">
+          <button class="action-btn" data-phase="2" data-action="ATK">⚔ Atacar</button>
+          <button class="action-btn" data-phase="2" data-action="DEF">🛡 Defender</button>
+          <button class="action-btn" data-phase="2" data-action="INT">🔀 Maniobrar</button>
+        </div>
+      </div>
+    </div>
+    <!-- PVP: panel de P2 -->
+    <div id="p2-action-panel" style="display:none">
+      <div class="action-panel-title p2-title">Acciones de <span id="p2-action-name">P2</span></div>
+      <div class="phases-grid">
+        <div class="phase-row">
+          <span class="phase-label">Fase 1</span>
+          <div class="action-btns">
+            <button class="action-btn p2-btn" data-phase="0" data-action="ATK">⚔ Atacar</button>
+            <button class="action-btn p2-btn" data-phase="0" data-action="DEF">🛡 Defender</button>
+            <button class="action-btn p2-btn" data-phase="0" data-action="INT">🔀 Maniobrar</button>
+          </div>
+        </div>
+        <div class="phase-row">
+          <span class="phase-label">Fase 2</span>
+          <div class="action-btns">
+            <button class="action-btn p2-btn" data-phase="1" data-action="ATK">⚔ Atacar</button>
+            <button class="action-btn p2-btn" data-phase="1" data-action="DEF">🛡 Defender</button>
+            <button class="action-btn p2-btn" data-phase="1" data-action="INT">🔀 Maniobrar</button>
+          </div>
+        </div>
+        <div class="phase-row">
+          <span class="phase-label">Fase 3</span>
+          <div class="action-btns">
+            <button class="action-btn p2-btn" data-phase="2" data-action="ATK">⚔ Atacar</button>
+            <button class="action-btn p2-btn" data-phase="2" data-action="DEF">🛡 Defender</button>
+            <button class="action-btn p2-btn" data-phase="2" data-action="INT">🔀 Maniobrar</button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-  <script src="/js/api.js"></script>
-  <script src="/js/state.js"></script>
-  <script src="/js/battle.js"></script>
+
+  <!-- Botones de acción -->
+  <div class="battle-controls">
+    <button class="btn-primary btn-large btn-roll" id="btn-roll" onclick="doTurn()">
+      🎲 Tirar Dado
+    </button>
+    <button class="btn-secondary" id="btn-sim-all" onclick="simulateAll()">
+      ⏩ Simular hasta el final
+    </button>
+  </div>
+
+  <!-- Log de batalla -->
+  <div class="battle-log card">
+    <div class="log-header">
+      <h3>Log de Batalla</h3>
+    </div>
+    <div id="log-entries"></div>
+  </div>
+
+  <!-- Overlay de victoria -->
+  <div id="winner-overlay" class="winner-overlay" style="display:none">
+    <div class="winner-box">
+      <div class="winner-label">VICTORIA</div>
+      <div class="winner-name" id="winner-name"></div>
+      <button class="btn-primary" onclick="document.getElementById('btn-back').click()">
+        Nueva batalla
+      </button>
+    </div>
+  </div>
+
+</div><!-- /view-battle -->
+
+<script src="/js/state.js"></script>
+<script src="/js/api.js"></script>
+<script src="/js/battle.js"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from app.schemas.battle import BattleStartRequest, BattlePhaseRequest, PhaseResult
+from app.schemas.battle import BattleStartRequest, BattlePhaseRequest, PhaseResult, SimulateTurnRequest
 from app.repositories import battle_repo as repo
 from app.repositories import rules_repo as rules
 from app.engine.resolver import resolve_phase
@@ -80,8 +80,16 @@ def do_phase(battle_id: int, payload: BattlePhaseRequest) -> PhaseResult:
 
 
 @router.post("/{battle_id}/simulate")
-def simulate_turn(battle_id: int) -> dict:
-    """Resuelve las 3 fases de un turno completo con IA para ambos lados."""
+def simulate_turn(battle_id: int, payload: SimulateTurnRequest = None) -> dict:
+    """
+    Resuelve las 3 fases de un turno.
+    - SIMULATION: sin payload → IA elige para ambos
+    - PVE:        payload.p1_actions → IA elige solo para P2
+    - PVP:        payload.p1_actions + payload.p2_actions
+    """
+    if payload is None:
+        payload = SimulateTurnRequest()
+
     battle = repo.get_battle(battle_id)
     if not battle:
         raise HTTPException(status_code=404, detail="Batalla no encontrada.")
@@ -89,7 +97,7 @@ def simulate_turn(battle_id: int) -> dict:
         raise HTTPException(status_code=409, detail="La batalla ya terminó.")
 
     results = []
-    for _ in range(3):
+    for i in range(3):
         b = repo.get_battle(battle_id)
         if b["status"] == "FINISHED":
             break
@@ -99,8 +107,8 @@ def simulate_turn(battle_id: int) -> dict:
         acc_p1 = repo.get_accumulators(battle_id, "P1")
         acc_p2 = repo.get_accumulators(battle_id, "P2")
 
-        a1 = choose_action(eff_p1, acc_p1["low_streak"] if acc_p1 else 0)
-        a2 = choose_action(eff_p2, acc_p2["low_streak"] if acc_p2 else 0)
+        a1 = payload.p1_actions[i] if payload.p1_actions else choose_action(eff_p1, acc_p1["low_streak"] if acc_p1 else 0)
+        a2 = payload.p2_actions[i] if payload.p2_actions else choose_action(eff_p2, acc_p2["low_streak"] if acc_p2 else 0)
 
         result = resolve_phase(battle_id, a1, a2)
         results.append(result.model_dump())
