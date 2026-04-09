@@ -22,11 +22,11 @@ document.getElementById('btn-back').addEventListener('click', () => {
 });
 
 async function startBattle(config = null) {
-  const nameP1   = config?.nameP1   ?? document.getElementById('cfg-name-p1').value.trim() || 'P1';
-  const nameP2   = config?.nameP2   ?? document.getElementById('cfg-name-p2').value.trim() || 'P2';
-  const arena    = config?.arena    ?? document.getElementById('cfg-arena').value   || null;
-  const weaponP1 = config?.weaponP1 ?? document.getElementById('cfg-weapon-p1').value || null;
-  const weaponP2 = config?.weaponP2 ?? document.getElementById('cfg-weapon-p2').value || null;
+  const nameP1   = (config?.nameP1   ?? document.getElementById('cfg-name-p1').value.trim()) || 'P1';
+  const nameP2   = (config?.nameP2   ?? document.getElementById('cfg-name-p2').value.trim()) || 'P2';
+  const arena    = (config?.arena    ?? document.getElementById('cfg-arena').value)   || null;
+  const weaponP1 = (config?.weaponP1 ?? document.getElementById('cfg-weapon-p1').value) || null;
+  const weaponP2 = (config?.weaponP2 ?? document.getElementById('cfg-weapon-p2').value) || null;
   const mode     = config?.mode     ?? State.mode;
 
   // Guardar config para rematch
@@ -60,6 +60,8 @@ async function startBattle(config = null) {
     document.getElementById('log-entries').innerHTML = '';
 
     resetCards();
+    updateEntorno([]);
+    updatePhaseTracker();
     setupActionPanel();
     resetActions();
     showView('battle');
@@ -219,11 +221,36 @@ async function refreshCards() {
 
 function updateEntorno(effects) {
   const strip = document.getElementById('entorno-strip');
+  const empty = document.getElementById('entorno-empty');
   if (!effects.length) {
     strip.innerHTML = '';
-    return;
+    empty.style.display = 'block';
+  } else {
+    strip.innerHTML = effects.map(e => `<span class="tag tag-entorno">${e}</span>`).join('');
+    empty.style.display = 'none';
   }
-  strip.innerHTML = effects.map(e => `<span class="tag tag-entorno">${e}</span>`).join('');
+}
+
+function updatePhaseTracker() {
+  const el = document.getElementById('phase-tracker');
+  if (!State.phases.length) { el.innerHTML = ''; return; }
+
+  // Group by turn
+  const turns = {};
+  for (const p of State.phases) {
+    if (!turns[p.turn_number]) turns[p.turn_number] = [];
+    turns[p.turn_number].push(p);
+  }
+
+  el.innerHTML = Object.entries(turns).map(([t, phases]) => {
+    const dots = phases.map(p => {
+      const w = p.phase_winner;
+      const cls = w === 'A' ? 'pt-p1' : w === 'B' ? 'pt-p2' : 'pt-tie';
+      const tip = w === 'A' ? State.nameP1 : w === 'B' ? State.nameP2 : '—';
+      return `<span class="pt-dot ${cls}" title="F${p.phase_number}: ${tip}">${w === 'A' ? '▲' : w === 'B' ? '▼' : '·'}</span>`;
+    }).join('');
+    return `<div class="pt-turn"><span class="pt-turn-label">T${t}</span>${dots}</div>`;
+  }).join('');
 }
 
 function updateCard(side, counters, effects) {
@@ -262,6 +289,7 @@ function resetCards() {
 
 function renderPhase(p) {
   State.phases.push(p);
+  updatePhaseTracker();
   const el = document.createElement('div');
   el.className = 'log-entry';
   el.dataset.winner = p.winner || '';

@@ -250,26 +250,83 @@ input[type="text"]:focus, select:focus {
   font-size: 1.6rem;
   font-weight: bold;
   text-align: center;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
 }
 
-.entorno-strip {
+/* ─── Battle meta row (entorno + phase tracker) ─── */
+.battle-meta-row {
   display: flex;
-  flex-direction: column;
-  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.meta-panel {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  flex: 1;
+}
+
+.meta-panel-right { flex: 2; }
+
+.meta-title {
+  font-size: 0.65rem;
+  color: var(--dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.entorno-tags {
+  display: flex;
+  flex-wrap: wrap;
   gap: 4px;
-  min-height: 4px;
+}
+
+.entorno-empty {
+  color: #333;
+  font-size: 0.8rem;
 }
 
 .tag-entorno {
   background: #001428;
-  border-color: var(--blue);
+  border: 1px solid var(--blue);
   color: #5dade2;
-  font-size: 0.62rem;
+  font-size: 0.65rem;
+  padding: 2px 7px;
+  border-radius: 2px;
+  display: inline-block;
 }
+
+/* ─── Phase tracker ─── */
+.pt-turn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+
+.pt-turn-label {
+  font-size: 0.62rem;
+  color: #444;
+  width: 20px;
+  flex-shrink: 0;
+}
+
+.pt-dot {
+  font-size: 0.75rem;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 3px;
+  cursor: default;
+}
+
+.pt-p1 { background: #1e1400; color: var(--gold); border: 1px solid var(--gold-dk); }
+.pt-p2 { background: #001428; color: var(--blue); border: 1px solid #1a5276; }
+.pt-tie { background: var(--bg2); color: #444; border: 1px solid var(--border); }
 
 /* ─── Action Panel ─── */
 .action-panel-title {
