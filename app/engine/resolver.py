@@ -29,27 +29,37 @@ def _sum_mods(battle_id: int, side: str) -> float:
     effects = repo.get_active_effects(battle_id, side)
     total = 0.0
     for eff in effects:
-        effect_def = rules.get_combat_effect(eff["effect_code"])
-        if effect_def:
-            total += effect_def["power_mod"]
+        code = eff["effect_code"]
+        if code == "MOMENTUM_OVERFLOW":
+            # El valor real del overflow se guarda en source como "overflow:X.X"
+            source = eff.get("source", "")
+            if source.startswith("overflow:"):
+                try:
+                    total += float(source.split(":", 1)[1])
+                except (IndexError, ValueError):
+                    pass
+        else:
+            effect_def = rules.get_combat_effect(code)
+            if effect_def:
+                total += effect_def["power_mod"]
     return total
 
 
-def _roll_dice(battle_id: int, side: str) -> tuple[int, float]:
+def _roll_dice(battle_id: int, side: str, phase_abs: int) -> tuple[int, float]:
     """Tira 1d20 y aplica modificadores. Devuelve (raw, effective)."""
     raw = random.randint(1, 20)
     mods = _sum_mods(battle_id, side)
     effective = raw + mods
-    # Cap superior: overflow → MOMENTUM_OVERFLOW
+    # Cap superior: overflow → MOMENTUM_OVERFLOW para la siguiente fase.
+    # expires_at = phase_abs + 2: survive expire_effects(phase_abs+1) y disponible
+    # en _sum_mods de fase phase_abs+1; eliminado al inicio de phase_abs+2.
     if effective > CAP:
         overflow = effective - CAP
         effective = CAP
-        # El efecto MOMENTUM_OVERFLOW se aplica como +overflow en la siguiente fase
-        # Lo guardamos como efecto temporal con power_mod = overflow
-        # (simplificado: el engine lo trata como modificador de 1 fase)
-        _add_effect_safe(battle_id, side, "MOMENTUM_OVERFLOW",
-                         expires_at_phase=None,  # se maneja por turno
-                         source=f"overflow:{overflow:.1f}")
+        repo.remove_effect(battle_id, side, "MOMENTUM_OVERFLOW")
+        repo.add_effect(battle_id, side, "MOMENTUM_OVERFLOW",
+                        expires_at_phase=phase_abs + 2,
+                        source=f"overflow:{overflow:.1f}")
     # Cap inferior: -4 mínimo (COLAPSO)
     effective = max(-4.0, effective)
     return raw, effective
@@ -280,8 +290,8 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     _check_fatiga(battle_id, "P2", action_p2, phase_abs)
 
     # ── Paso 2: tiradas ──────────────────────────────────────────────────────
-    roll_p1, eff_p1 = _roll_dice(battle_id, "P1")
-    roll_p2, eff_p2 = _roll_dice(battle_id, "P2")
+    roll_p1, eff_p1 = _roll_dice(battle_id, "P1", phase_abs)
+    roll_p2, eff_p2 = _roll_dice(battle_id, "P2", phase_abs)
 
     # ── Paso 3: clasificar ───────────────────────────────────────────────────
     power_p1 = rules.get_power_level(eff_p1)

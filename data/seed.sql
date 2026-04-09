@@ -143,11 +143,13 @@ VALUES
 
 INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplier, applies_to) VALUES
 -- Caído amplifica outcomes fatales contra el receptor
-('CAIDO',        'ATK_ATK_EXT_MX_FATAL_CHOQUE',   2.5,  'RECEPTOR'),
--- Vacío amplifica caída al vacío
-('VACIO',        'FATAL_CAIDA_VACIO',              5.0,  'BOTH'),
+('CAIDO',        'ATK_ATK_MAX_MX_FATAL_ESTOCADA_A',          2.5,  'RECEPTOR'),
+('CAIDO',        'ATK_ATK_EXT_MX_FATAL_REMATE_A',            2.5,  'RECEPTOR'),
+-- Vacío amplifica caída al precipicio
+('VACIO',        'ATK_INT_EXT_MX_ATAQUE_AL_PRECIPICIO',      5.0,  'BOTH'),
+('VACIO',        'INT_ATK_EXT_MX_ATAQUE_AL_PRECIPICIO',      5.0,  'BOTH'),
 -- Niebla amplifica sorpresa
-('NIEBLA_EXTREMA','ATK_ATK_DEFAULT_DOMINA_A',      1.5,  'ACTOR');
+('NIEBLA_EXTREMA','ATK_ATK_DEFAULT_DOMINA_A',                1.5,  'ACTOR');
 
 -- ============================================================
 -- NARRATIVA BASE (mínima para que el engine no falle en MVP)
