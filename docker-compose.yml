@@ -7,11 +7,11 @@ services:
     volumes:
       - ./data:/app/data
     networks:
-      - worldz_net
+      - stack_net
     expose:
       - "8000"
 
 networks:
-  worldz_net:
+  stack_net:
     external: true
-    name: worldz_net
+    name: stack_net
