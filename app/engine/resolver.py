@@ -55,14 +55,32 @@ def _roll_dice(battle_id: int, side: str) -> tuple[int, float]:
     return raw, effective
 
 
+# Sesgo por ganador del dado, escala con la magnitud de diferencia.
+# A mayor banda, más determinista el resultado hacia quien dominó el dado.
+_BAND_BIAS = {
+    'BAJA': 1.0, 'REGULAR': 1.6, 'MODERADA': 2.5,
+    'ALTA': 4.0, 'MUY_ALTA': 6.0, 'MAXIMA': 9.0, 'EXTREMA': 15.0,
+    'DEFAULT': 1.0,
+}
+
+
 def _weighted_choice(candidates: list[dict], battle_id: int,
                      active_states_p1: list[str],
-                     active_states_p2: list[str]) -> dict:
-    """Elige un outcome de la lista aplicando multiplicadores de estado."""
+                     active_states_p2: list[str],
+                     dice_leader: str = 'NONE',
+                     diff_band: str = 'DEFAULT') -> dict:
+    """Elige un outcome de la lista aplicando multiplicadores de estado
+    y sesgo hacia el ganador del dado proporcional a la banda de diferencia."""
     all_states = list(set(active_states_p1 + active_states_p2))
+    bias = _BAND_BIAS.get(diff_band, 1.0)
     weights = []
     for c in candidates:
         w = c["base_weight"] * rules.get_state_multipliers(c["outcome_code"], all_states)
+        if dice_leader != 'NONE' and bias > 1.0:
+            if c["phase_winner"] == dice_leader:
+                w *= bias
+            elif c["phase_winner"] != 'NONE':
+                w /= bias
         weights.append(max(w, 0.001))
     return random.choices(candidates, weights=weights, k=1)[0]
 
@@ -258,18 +276,7 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
 
     candidates = rules.get_outcome(action_pair, diff_band, power_context)
     if not candidates:
-        # Fallback al pool DEFAULT; sesgar pesos hacia el ganador del dado
         candidates = rules.get_outcome(action_pair, "DEFAULT", "DEFAULT")
-        if candidates and dice_leader != "NONE":
-            biased = []
-            for c in candidates:
-                c2 = dict(c)
-                if c2["phase_winner"] == dice_leader:
-                    c2["base_weight"] = c2["base_weight"] * 5.0   # fuerte sesgo
-                elif c2["phase_winner"] != "NONE":
-                    c2["base_weight"] = c2["base_weight"] * 0.15  # penalizar contrario
-                biased.append(c2)
-            candidates = biased
     if not candidates:
         # Emergencia absoluta (solo si la propia fila DEFAULT falta)
         outcome = {
@@ -284,7 +291,8 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
             "is_fatal": 0,
         }
     else:
-        outcome = _weighted_choice(candidates, battle_id, active_p1, active_p2)
+        outcome = _weighted_choice(candidates, battle_id, active_p1, active_p2,
+                                   dice_leader=dice_leader, diff_band=diff_band)
 
     # ── Paso 6: aplicar efectos ──────────────────────────────────────────────
     # Determinar qué efecto va a P1 (A) y cuál a P2 (B)
