@@ -440,7 +440,7 @@ function buildBattleLog() {
       const phaseWinner = p.phase_winner === 'A' ? nameP1 : p.phase_winner === 'B' ? nameP2 : '—';
       const winCls = p.phase_winner === 'A' ? 'blog-winner-p1' : p.phase_winner === 'B' ? 'blog-winner-p2' : '';
       const effectsHtml = [p.effect_applied_p1, p.effect_applied_p2]
-        .filter(Boolean).map(e => `<span class="tag">${e}</span>`).join(' ');
+        .filter(Boolean).map(e => effectTag(e)).join(' ');
 
       html += `
         <div class="blog-entry">
@@ -510,7 +510,12 @@ function buildSummary(winningSide) {
     ${row('Daño total recibido', totalDmg.toFixed(1))}
     ${row('Mayor golpe único', `+${maxHit}`, maxHit >= 3 ? 'bad' : '')}
     ${row('Par de acciones decisivo', finisherPair)}
-    ${uniqueEffects.length ? `<div class="summary-section-title">Efectos sufridos</div>${uniqueEffects.map(e => row(e, '')).join('')}` : ''}
+    ${uniqueEffects.length ? `
+    <div class="summary-section-title">Efectos sufridos</div>
+    ${uniqueEffects.map(e => {
+      const info = STATE_GLOSSARY[e];
+      return `<div class="summary-effect-item">${effectTag(e)}${info ? `<span class="summary-effect-desc">${info.tip}</span>` : ''}</div>`;
+    }).join('')}` : ''}
   `;
 }
 
