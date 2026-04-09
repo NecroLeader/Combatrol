@@ -253,9 +253,25 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     active_p1 = repo.get_active_effect_codes(battle_id, "P1")
     active_p2 = repo.get_active_effect_codes(battle_id, "P2")
 
+    # Quién gana el dado (A=P1, B=P2, NONE=empate) — se usa para sesgar el DEFAULT
+    dice_leader = "A" if eff_p1 > eff_p2 else ("B" if eff_p2 > eff_p1 else "NONE")
+
     candidates = rules.get_outcome(action_pair, diff_band, power_context)
     if not candidates:
-        # fallback de emergencia (no debería ocurrir si el seed está bien)
+        # Fallback al pool DEFAULT; sesgar pesos hacia el ganador del dado
+        candidates = rules.get_outcome(action_pair, "DEFAULT", "DEFAULT")
+        if candidates and dice_leader != "NONE":
+            biased = []
+            for c in candidates:
+                c2 = dict(c)
+                if c2["phase_winner"] == dice_leader:
+                    c2["base_weight"] = c2["base_weight"] * 5.0   # fuerte sesgo
+                elif c2["phase_winner"] != "NONE":
+                    c2["base_weight"] = c2["base_weight"] * 0.15  # penalizar contrario
+                biased.append(c2)
+            candidates = biased
+    if not candidates:
+        # Emergencia absoluta (solo si la propia fila DEFAULT falta)
         outcome = {
             "outcome_code": "FALLBACK_EMERGENCIA",
             "phase_winner": "NONE",

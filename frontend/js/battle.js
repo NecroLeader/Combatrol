@@ -57,11 +57,12 @@ async function startBattle(config = null) {
     document.getElementById('p1-weapon').textContent = data.p1.weapon;
     document.getElementById('p2-weapon').textContent = data.p2.weapon;
     document.getElementById('p2-action-name').textContent = State.nameP2;
-    document.getElementById('log-entries').innerHTML = '';
 
     resetCards();
     updateEntorno([]);
     updatePhaseTracker();
+    document.getElementById('phase-math-log').innerHTML = '';
+    document.getElementById('log-entries').innerHTML = '';
     setupActionPanel();
     resetActions();
     showView('battle');
@@ -290,40 +291,29 @@ function resetCards() {
 function renderPhase(p) {
   State.phases.push(p);
   updatePhaseTracker();
-  const el = document.createElement('div');
-  el.className = 'log-entry';
-  el.dataset.winner = p.winner || '';
 
   const actionLabel = {ATK: '⚔ Ataque', DEF: '🛡 Defensa', INT: '🔀 Maniobra'};
   const nameP1 = State.nameP1;
   const nameP2 = State.nameP2;
+
+  const rollWinnerLabel = p.roll_winner === 'P1' ? nameP1 : p.roll_winner === 'P2' ? nameP2 : '—';
+  const phaseWinnerLabel = p.phase_winner === 'A' ? nameP1 : p.phase_winner === 'B' ? nameP2 : '—';
+  const ef1 = p.effective_p1.toFixed(1);
+  const ef2 = p.effective_p2.toFixed(1);
+  const mismatch = p.roll_winner !== 'NONE' && (
+    (p.roll_winner === 'P1' && p.phase_winner === 'B') ||
+    (p.roll_winner === 'P2' && p.phase_winner === 'A')
+  );
 
   const effectsHtml = [p.effect_applied_p1, p.effect_applied_p2]
     .filter(Boolean)
     .map(e => `<span class="tag">${e}</span>`)
     .join('');
 
-  const mathHtml = `
-    <div class="log-math${State.showMath ? ' visible' : ''}">
-      <b>Turno</b> ${p.turn_number} &nbsp;·&nbsp;
-      <b>Fase</b> ${p.phase_number} &nbsp;·&nbsp;
-      <b>Par</b> ${p.action_pair}<br>
-      <b>Banda</b> ${p.difference_band} &nbsp;·&nbsp;
-      <b>Contexto</b> ${p.power_context}<br>
-      <b>Dado bruto</b> ${nameP1} ${p.roll_p1} vs ${nameP2} ${p.roll_p2} &nbsp;·&nbsp;
-      <b>Efectivo</b> ${p.effective_p1.toFixed(1)} vs ${p.effective_p2.toFixed(1)}<br>
-      <b>Poder</b> P${p.power_p1} vs P${p.power_p2} &nbsp;·&nbsp;
-      <b>Diferencia</b> ${p.difference.toFixed(1)}<br>
-      <b>Outcome</b> ${p.outcome_code} &nbsp;·&nbsp;
-      <b>Ganador fase</b> ${p.phase_winner} &nbsp;·&nbsp;
-      <b>Ganador dado</b> ${p.roll_winner}
-    </div>
-  `;
-
-  const rollWinnerLabel = p.roll_winner === 'P1' ? nameP1 : p.roll_winner === 'P2' ? nameP2 : 'empate';
-  const ef1 = p.effective_p1.toFixed(1);
-  const ef2 = p.effective_p2.toFixed(1);
-
+  // ── Entrada narrativa (columna izquierda) ──────────────────────────────────
+  const el = document.createElement('div');
+  el.className = 'log-entry';
+  el.dataset.winner = p.winner || '';
   el.innerHTML = `
     <div class="log-phase-header">
       T${p.turn_number}·F${p.phase_number} &nbsp;|&nbsp;
@@ -334,7 +324,6 @@ function renderPhase(p) {
       <span class="dice-p1">🎲 ${nameP1} <b>${p.roll_p1}</b>${ef1 !== String(p.roll_p1) ? ` <span class="dice-eff">(ef ${ef1})</span>` : ''}</span>
       <span class="dice-vs">vs</span>
       <span class="dice-p2">🎲 ${nameP2} <b>${p.roll_p2}</b>${ef2 !== String(p.roll_p2) ? ` <span class="dice-eff">(ef ${ef2})</span>` : ''}</span>
-      <span class="dice-winner">→ ${rollWinnerLabel} gana dado</span>
     </div>
     <div class="log-narrative">"${p.narrative_text}"</div>
     <div class="log-counters">
@@ -342,27 +331,29 @@ function renderPhase(p) {
       <span class="log-cnt-p2">${nameP2} → ${p.counters_p2.toFixed(1)} cnt (+${p.counter_dmg_p2})</span>
     </div>
     ${effectsHtml ? `<div class="log-effects">${effectsHtml}</div>` : ''}
-    ${mathHtml}
-    ${p.battle_over ? `<div style="margin-top:8px; color:var(--gold); letter-spacing:2px; font-size:0.85rem">
-      ⚔ FIN — VICTORIA: ${p.winner === 'P1' ? nameP1 : p.winner === 'P2' ? nameP2 : p.winner}
-    </div>` : ''}
+    ${p.battle_over ? `<div class="log-fin">⚔ FIN — VICTORIA: ${p.winner === 'P1' ? nameP1 : p.winner === 'P2' ? nameP2 : p.winner}</div>` : ''}
   `;
-
   document.getElementById('log-entries').prepend(el);
-}
 
-/* ══════════════════════════════════════
-   MATH TOGGLE
-══════════════════════════════════════ */
-
-function toggleMath() {
-  State.showMath = !State.showMath;
-  const btn = document.getElementById('btn-math-toggle');
-  btn.textContent = State.showMath ? 'Ocultar math' : 'Mostrar math';
-
-  document.querySelectorAll('.log-math').forEach(el => {
-    el.classList.toggle('visible', State.showMath);
-  });
+  // ── Entrada de análisis (columna derecha) ──────────────────────────────────
+  const ma = document.createElement('div');
+  ma.className = 'math-entry';
+  ma.innerHTML = `
+    <div class="math-header">T${p.turn_number}·F${p.phase_number} &nbsp; ${p.action_pair}</div>
+    <div class="math-row"><span class="mk">Banda</span><span class="mv">${p.difference_band}</span></div>
+    <div class="math-row"><span class="mk">Contexto</span><span class="mv">${p.power_context}</span></div>
+    <div class="math-row">
+      <span class="mk">Dado</span>
+      <span class="mv math-p1">${nameP1} ${p.roll_p1}${ef1 !== String(p.roll_p1) ? ` (${ef1})` : ''} P${p.power_p1}</span>
+      <span class="mv math-sep">·</span>
+      <span class="mv math-p2">${nameP2} ${p.roll_p2}${ef2 !== String(p.roll_p2) ? ` (${ef2})` : ''} P${p.power_p2}</span>
+    </div>
+    <div class="math-row"><span class="mk">Diferencia</span><span class="mv">${p.difference.toFixed(1)}</span></div>
+    <div class="math-row"><span class="mk">Dado ganó</span><span class="mv ${p.roll_winner === 'P1' ? 'math-p1' : p.roll_winner === 'P2' ? 'math-p2' : ''}">${rollWinnerLabel}</span></div>
+    <div class="math-row"><span class="mk">Fase ganó</span><span class="mv ${p.phase_winner === 'A' ? 'math-p1' : p.phase_winner === 'B' ? 'math-p2' : ''}">${phaseWinnerLabel}${mismatch ? ' <span class="math-warn">⚠ discrepancia</span>' : ''}</span></div>
+    <div class="math-outcome">${p.outcome_code}</div>
+  `;
+  document.getElementById('phase-math-log').prepend(ma);
 }
 
 /* ══════════════════════════════════════

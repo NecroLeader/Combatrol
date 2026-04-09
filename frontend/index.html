@@ -89,9 +89,7 @@
       <span id="b-mode"></span> &nbsp;·&nbsp;
       Arena: <span id="b-arena"></span>
     </div>
-    <button class="btn-ghost" id="btn-math-toggle" onclick="toggleMath()">
-      Mostrar math
-    </button>
+    <div></div>
   </div>
 
   <!-- Tarjetas de jugadores -->
@@ -116,19 +114,6 @@
       </div>
       <div class="counter-num"><span id="p2-cnt">0.0</span> <span class="cnt-max">/ 15</span></div>
       <div class="pcard-effects" id="p2-effects"></div>
-    </div>
-  </div>
-
-  <!-- Entorno + Tracker de fases -->
-  <div class="battle-meta-row">
-    <div class="meta-panel" id="entorno-panel">
-      <div class="meta-title">ENTORNO</div>
-      <div id="entorno-strip" class="entorno-tags"></div>
-      <div class="entorno-empty" id="entorno-empty">—</div>
-    </div>
-    <div class="meta-panel meta-panel-right" id="phase-tracker-panel">
-      <div class="meta-title">FASES</div>
-      <div id="phase-tracker"></div>
     </div>
   </div>
 
@@ -203,12 +188,37 @@
     </button>
   </div>
 
-  <!-- Log de batalla -->
-  <div class="battle-log card">
-    <div class="log-header">
-      <h3>Log de Batalla</h3>
+  <!-- Cuerpo principal: 2 columnas -->
+  <div class="battle-body">
+
+    <!-- COL IZQUIERDA: estado actual + historial narrativo -->
+    <div class="col-left">
+      <div class="card status-panel">
+        <div class="sp-section-title">ESTADO ACTUAL</div>
+        <div class="sp-row">
+          <span class="sp-label">ENTORNO</span>
+          <span id="entorno-strip" class="entorno-tags"></span>
+          <span id="entorno-empty" class="sp-empty">—</span>
+        </div>
+      </div>
+      <div class="card log-panel">
+        <div class="sp-section-title">HISTORIAL</div>
+        <div id="log-entries"></div>
+      </div>
     </div>
-    <div id="log-entries"></div>
+
+    <!-- COL DERECHA: tracker de fases + análisis matemático -->
+    <div class="col-right">
+      <div class="card">
+        <div class="sp-section-title">FASES</div>
+        <div id="phase-tracker"></div>
+      </div>
+      <div class="card">
+        <div class="sp-section-title">ANÁLISIS</div>
+        <div id="phase-math-log"></div>
+      </div>
+    </div>
+
   </div>
 
   <!-- Overlay de victoria -->

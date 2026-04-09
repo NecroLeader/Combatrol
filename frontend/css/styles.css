@@ -387,20 +387,97 @@ input[type="text"]:focus, select:focus {
   display: flex;
   gap: 12px;
   align-items: center;
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 .btn-roll { flex: 1; }
 
-/* ─── Battle Log ─── */
-.log-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
+/* ─── Battle body: 2 columnas ─── */
+.battle-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
 }
-.log-header h3 { color: var(--dim); font-size: 0.8rem; letter-spacing: 2px; }
 
-#log-entries { max-height: 520px; overflow-y: auto; }
+.col-left, .col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ─── Status panel (col izquierda, arriba) ─── */
+.sp-section-title {
+  font-size: 0.62rem;
+  color: var(--dim);
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+
+.sp-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sp-label {
+  font-size: 0.62rem;
+  color: #444;
+  letter-spacing: 1px;
+  flex-shrink: 0;
+}
+
+.sp-empty { color: #333; font-size: 0.8rem; }
+
+/* ─── Log panel (col izquierda, abajo) ─── */
+.log-panel { flex: 1; }
+#log-entries { max-height: 560px; overflow-y: auto; }
+
+/* ─── Math analysis panel (col derecha) ─── */
+#phase-math-log { max-height: 600px; overflow-y: auto; }
+
+.math-entry {
+  border-bottom: 1px solid #1a1a1a;
+  padding: 10px 0;
+  font-size: 0.72rem;
+}
+
+.math-header {
+  font-size: 0.68rem;
+  color: #3a3a3a;
+  letter-spacing: 1px;
+  margin-bottom: 6px;
+}
+
+.math-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+
+.mk {
+  color: #444;
+  min-width: 70px;
+  flex-shrink: 0;
+}
+
+.mv { color: #666; }
+.math-p1 { color: var(--gold); }
+.math-p2 { color: var(--blue); }
+.math-sep { color: #333; }
+.math-warn { color: var(--yellow); font-size: 0.65rem; }
+
+.math-outcome {
+  margin-top: 4px;
+  font-size: 0.6rem;
+  color: #2e2e2e;
+  word-break: break-all;
+}
+
+/* ─── Battle Log ─── */
 
 .log-entry {
   border-bottom: 1px solid var(--border);
@@ -447,29 +524,11 @@ input[type="text"]:focus, select:focus {
 
 .log-effects { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 
-.log-math {
+.log-fin {
   margin-top: 8px;
-  padding: 8px 10px;
-  background: var(--bg2);
-  border-left: 2px solid #2a2a2a;
-  font-size: 0.7rem;
-  color: #4a4a4a;
-  line-height: 1.8;
-  display: none;
-}
-.log-math.visible { display: block; }
-.log-math b { color: #666; }
-
-.log-entry.battle-end {
-  border: 1px solid var(--gold-dk);
-  border-radius: 4px;
-  padding: 14px;
-  margin-bottom: 4px;
-  background: #130f00;
-  text-align: center;
   color: var(--gold);
-  letter-spacing: 3px;
-  font-size: 0.9rem;
+  letter-spacing: 2px;
+  font-size: 0.82rem;
 }
 
 /* Effect tags */
@@ -561,10 +620,11 @@ input[type="text"]:focus, select:focus {
 }
 
 /* ─── Responsive ─── */
-@media (max-width: 600px) {
+@media (max-width: 780px) {
   .mode-grid { grid-template-columns: 1fr; }
   .players-row { grid-template-columns: 1fr; }
   .vs-sep { display: none; }
   .config-row { flex-direction: column; align-items: flex-start; }
   .action-btns { flex-direction: column; }
+  .battle-body { grid-template-columns: 1fr; }
 }
