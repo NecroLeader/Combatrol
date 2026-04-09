@@ -106,7 +106,10 @@
       <div class="pcard-effects" id="p1-effects"></div>
     </div>
 
-    <div class="vs-sep">VS</div>
+    <div class="vs-sep">
+      VS
+      <div class="entorno-strip" id="entorno-strip"></div>
+    </div>
 
     <div class="player-card" id="card-p2">
       <div class="pcard-name" id="p2-name">P2</div>
@@ -203,9 +206,16 @@
     <div class="winner-box">
       <div class="winner-label">VICTORIA</div>
       <div class="winner-name" id="winner-name"></div>
-      <button class="btn-primary" onclick="document.getElementById('btn-back').click()">
-        Nueva batalla
-      </button>
+
+      <!-- Resumen de batalla -->
+      <div class="battle-summary" id="battle-summary"></div>
+
+      <div class="overlay-buttons">
+        <button class="btn-primary btn-large" onclick="rematch()">⟳ Revancha</button>
+        <button class="btn-secondary" onclick="document.getElementById('btn-back').click()">
+          Nueva batalla
+        </button>
+      </div>
     </div>
   </div>
 

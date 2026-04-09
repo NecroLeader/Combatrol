@@ -50,6 +50,7 @@ def get_battle(battle_id: int) -> dict:
     state_p2 = repo.get_battle_state(battle_id, "P2")
     effects_p1 = repo.get_active_effect_codes(battle_id, "P1")
     effects_p2 = repo.get_active_effect_codes(battle_id, "P2")
+    effects_entorno = repo.get_active_effect_codes(battle_id, "ENTORNO")
     acc_p1 = repo.get_accumulators(battle_id, "P1")
     acc_p2 = repo.get_accumulators(battle_id, "P2")
 
@@ -65,6 +66,7 @@ def get_battle(battle_id: int) -> dict:
             "effects": effects_p2,
             "accumulators": dict(acc_p2) if acc_p2 else None,
         },
+        "entorno": effects_entorno,
     }
 
 

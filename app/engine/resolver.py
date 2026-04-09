@@ -87,6 +87,12 @@ def _apply_effect(battle_id: int, side: str, effect_code: str | None,
     # Efectos de entorno van al lado ENTORNO sin importar quién los activó
     effective_side = "ENTORNO" if effect_def["applies_to"] == "ENTORNO" else side
 
+    # POS_FAVORABLE y POS_DESFAVORABLE son mutuamente excluyentes por jugador
+    if effect_code == "POS_FAVORABLE":
+        repo.remove_effect(battle_id, effective_side, "POS_DESFAVORABLE")
+    elif effect_code == "POS_DESFAVORABLE":
+        repo.remove_effect(battle_id, effective_side, "POS_FAVORABLE")
+
     duration = effect_def["duration_phases"]
     if duration == -1:
         expires = None

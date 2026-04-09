@@ -250,6 +250,25 @@ input[type="text"]:focus, select:focus {
   font-size: 1.6rem;
   font-weight: bold;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.entorno-strip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-height: 4px;
+}
+
+.tag-entorno {
+  background: #001428;
+  border-color: var(--blue);
+  color: #5dade2;
+  font-size: 0.62rem;
 }
 
 /* ─── Action Panel ─── */
@@ -338,6 +357,20 @@ input[type="text"]:focus, select:focus {
   letter-spacing: 1px;
 }
 
+.log-dice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.8rem;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+}
+.dice-p1 { color: var(--gold); }
+.dice-p2 { color: var(--blue); }
+.dice-vs { color: #444; font-size: 0.7rem; }
+.dice-winner { color: #888; font-size: 0.72rem; margin-left: auto; }
+.dice-eff { color: #555; font-size: 0.7rem; }
+
 .log-narrative {
   color: #ccc;
   font-style: italic;
@@ -408,11 +441,53 @@ input[type="text"]:focus, select:focus {
   background: var(--bg3);
   border: 2px solid var(--gold);
   border-radius: 10px;
-  padding: 48px 64px;
+  padding: 40px 56px;
   text-align: center;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  max-width: 520px;
+  width: 90vw;
+}
+
+/* Battle summary inside overlay */
+.battle-summary {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 16px 20px;
+  text-align: left;
+  font-size: 0.78rem;
+  line-height: 2;
+  color: var(--dim);
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: 2px 0;
+}
+.summary-row:last-child { border-bottom: none; }
+.summary-label { color: #555; }
+.summary-val   { color: var(--text); text-align: right; }
+.summary-val.highlight { color: var(--gold); }
+.summary-val.bad  { color: var(--red); }
+
+.summary-section-title {
+  font-size: 0.68rem;
+  color: #3a3a3a;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  margin: 10px 0 4px;
+}
+.summary-section-title:first-child { margin-top: 0; }
+
+.overlay-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  flex-wrap: wrap;
 }
 
 .winner-label {

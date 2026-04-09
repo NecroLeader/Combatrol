@@ -214,6 +214,16 @@ async function refreshCards() {
 
   updateCard('p1', s1?.counters ?? 0, data.p1.effects || []);
   updateCard('p2', s2?.counters ?? 0, data.p2.effects || []);
+  updateEntorno(data.entorno || []);
+}
+
+function updateEntorno(effects) {
+  const strip = document.getElementById('entorno-strip');
+  if (!effects.length) {
+    strip.innerHTML = '';
+    return;
+  }
+  strip.innerHTML = effects.map(e => `<span class="tag tag-entorno">${e}</span>`).join('');
 }
 
 function updateCard(side, counters, effects) {
@@ -282,11 +292,21 @@ function renderPhase(p) {
     </div>
   `;
 
+  const rollWinnerLabel = p.roll_winner === 'P1' ? nameP1 : p.roll_winner === 'P2' ? nameP2 : 'empate';
+  const ef1 = p.effective_p1.toFixed(1);
+  const ef2 = p.effective_p2.toFixed(1);
+
   el.innerHTML = `
     <div class="log-phase-header">
       T${p.turn_number}·F${p.phase_number} &nbsp;|&nbsp;
       ${nameP1}: ${actionLabel[p.action_p1] || p.action_p1} &nbsp;vs&nbsp;
       ${nameP2}: ${actionLabel[p.action_p2] || p.action_p2}
+    </div>
+    <div class="log-dice">
+      <span class="dice-p1">🎲 ${nameP1} <b>${p.roll_p1}</b>${ef1 !== String(p.roll_p1) ? ` <span class="dice-eff">(ef ${ef1})</span>` : ''}</span>
+      <span class="dice-vs">vs</span>
+      <span class="dice-p2">🎲 ${nameP2} <b>${p.roll_p2}</b>${ef2 !== String(p.roll_p2) ? ` <span class="dice-eff">(ef ${ef2})</span>` : ''}</span>
+      <span class="dice-winner">→ ${rollWinnerLabel} gana dado</span>
     </div>
     <div class="log-narrative">"${p.narrative_text}"</div>
     <div class="log-counters">
