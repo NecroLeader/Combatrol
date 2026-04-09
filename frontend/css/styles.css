@@ -619,6 +619,189 @@ input[type="text"]:focus, select:focus {
   font-weight: bold;
 }
 
+/* ─── Battle log in winner overlay ─── */
+.battle-log-details {
+  text-align: left;
+}
+
+.battle-log-toggle {
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--dim);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.battle-log-toggle::marker,
+.battle-log-toggle::-webkit-details-marker { display: none; }
+
+.battle-log-details[open] .battle-log-toggle::after { content: ' ▲'; }
+.battle-log-details:not([open]) .battle-log-toggle::after { content: ' ▼'; }
+
+.battle-log-scroll {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg2);
+  padding: 10px 14px;
+  margin-top: 8px;
+  scrollbar-width: thin;
+}
+
+.blog-entry {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  padding: 8px 0;
+  font-size: 0.76rem;
+}
+
+.blog-entry:last-child { border-bottom: none; }
+
+.blog-header {
+  font-size: 0.65rem;
+  color: #3a3a3a;
+  letter-spacing: 1px;
+  margin-bottom: 3px;
+}
+
+.blog-dice {
+  display: flex;
+  gap: 8px;
+  font-size: 0.75rem;
+  margin-bottom: 3px;
+  flex-wrap: wrap;
+}
+
+.blog-narrative {
+  color: #999;
+  font-style: italic;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  margin-bottom: 4px;
+}
+
+.blog-outcome {
+  font-size: 0.7rem;
+  color: var(--dim);
+}
+
+.blog-winner-p1 { color: var(--gold); }
+.blog-winner-p2 { color: var(--blue); }
+.blog-fin { color: var(--gold); font-size: 0.75rem; margin-top: 4px; letter-spacing: 1px; }
+
+/* ─── Phase Carousel ─── */
+.phase-carousel {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 90;
+}
+
+.carousel-box {
+  background: var(--bg3);
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  padding: 28px 32px;
+  width: min(520px, 92vw);
+}
+
+.carousel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.carousel-turn-label {
+  font-size: 0.68rem;
+  color: var(--dim);
+  letter-spacing: 3px;
+}
+
+.carousel-dots {
+  display: flex;
+  gap: 8px;
+}
+
+.c-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.25s;
+}
+
+.c-dot.active { background: var(--gold); }
+.c-dot.seen   { background: #444; }
+
+.carousel-track {
+  min-height: 160px;
+}
+
+.carousel-card {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg2);
+  padding: 16px 18px;
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(36px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-36px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.carousel-slide-right { animation: slideInRight 0.22s ease; }
+.carousel-slide-left  { animation: slideInLeft  0.22s ease; }
+
+.carousel-winner {
+  margin-top: 10px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  letter-spacing: 1px;
+  text-align: right;
+}
+
+.cwinner-p1 { color: var(--gold); }
+.cwinner-p2 { color: var(--blue); }
+.cwinner-tie { color: var(--dim); }
+
+.carousel-nav {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* ─── Winner overlay entrance animation ─── */
+@keyframes overlayIn {
+  from { opacity: 0; transform: scale(0.93); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.winner-box {
+  animation: overlayIn 0.3s ease;
+}
+
+/* make winner-box scrollable when log is open */
+.winner-overlay .winner-box {
+  max-height: 92vh;
+  overflow-y: auto;
+}
+
 /* ─── Responsive ─── */
 @media (max-width: 780px) {
   .mode-grid { grid-template-columns: 1fr; }

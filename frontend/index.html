@@ -230,11 +230,32 @@
       <!-- Resumen de batalla -->
       <div class="battle-summary" id="battle-summary"></div>
 
+      <!-- Log completo colapsable -->
+      <details class="battle-log-details" id="battle-log-details">
+        <summary class="battle-log-toggle">📜 Ver log de batalla</summary>
+        <div class="battle-log-scroll" id="battle-log-scroll"></div>
+      </details>
+
       <div class="overlay-buttons">
         <button class="btn-primary btn-large" onclick="rematch()">⟳ Revancha</button>
         <button class="btn-secondary" onclick="document.getElementById('btn-back').click()">
           Nueva batalla
         </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Carrusel de fases -->
+  <div id="phase-carousel" class="phase-carousel" style="display:none">
+    <div class="carousel-box">
+      <div class="carousel-header">
+        <span class="carousel-turn-label" id="carousel-turn-label">TURNO 1</span>
+        <div class="carousel-dots" id="carousel-dots"></div>
+      </div>
+      <div class="carousel-track" id="carousel-track"></div>
+      <div class="carousel-nav">
+        <button class="btn-secondary" id="carousel-prev" onclick="carouselNav(-1)">← Anterior</button>
+        <button class="btn-primary" id="carousel-next" onclick="carouselNav(1)">Siguiente →</button>
       </div>
     </div>
   </div>

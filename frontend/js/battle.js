@@ -159,6 +159,12 @@ async function doTurn() {
     }
 
     const data = await apiPost(`/battle/${State.battleId}/simulate`, body);
+
+    // In PVE/PVP show phases one-by-one as cards; SIMULATION renders directly
+    if (State.mode !== 'SIMULATION') {
+      await showPhaseCarousel(data.phases);
+    }
+
     data.phases.forEach(renderPhase);
     await refreshCards();
 
@@ -220,6 +226,48 @@ async function refreshCards() {
   updateEntorno(data.entorno || []);
 }
 
+/* ══════════════════════════════════════
+   GLOSARIO DE ESTADOS
+══════════════════════════════════════ */
+
+const STATE_GLOSSARY = {
+  // Debuffs que bloquean o restringen
+  CAIDO:              { label: 'Caído',              tip: 'Pierde la siguiente fase. Solo puede maniobrar (INT). El oponente recibe Hiper Ofensivo si no tiene debuffs.' },
+  DESARMADO:          { label: 'Desarmado',          tip: 'Permanente. −3 a todas las tiradas. Sin arma de filo no puede usar ciertos outcomes fatales.' },
+  ARMA_ROTA:          { label: 'Arma Rota',          tip: 'Permanente. −2 a todas las tiradas. Improvisa con lo que queda del arma.' },
+  DESMEMBRADO:        { label: 'Desmembrado',        tip: 'Permanente. −5 a todas las tiradas. El cap de derrota baja de 15 a 10. Nunca puede superar tirada 20.' },
+  FATIGA:             { label: 'Fatiga',              tip: 'Spam de ATK detectado. −3 a tiradas durante 1 fase del próximo turno.' },
+  VACILACION:         { label: 'Vacilación',         tip: 'Tiradas bajas consecutivas. −2 a tiradas durante 2 turnos. Duda y retroceso.' },
+  PANICO:             { label: 'Pánico',             tip: 'Racha de tiradas muy bajas. −3 a tiradas, no puede atacar durante 1 turno. Solo defiende o maniobra.' },
+  POS_DESFAVORABLE:   { label: 'Pos. Desfavorable',  tip: 'Posición débil. −3 a tiradas hasta que cambie la posición.' },
+  // Buffs
+  POS_FAVORABLE:      { label: 'Pos. Favorable',     tip: 'Posición ventajosa. +3 a tiradas hasta que cambie la posición.' },
+  CONTRA_EXITOSO:     { label: 'Contraataque',       tip: '+4 a la siguiente tirada. Momentum de un contraataque perfecto.' },
+  HIPEROFFENSIVO:     { label: 'Hiper Ofensivo',     tip: '+5 a la siguiente tirada. Oportunidad ofensiva ante rival caído.' },
+  // Entorno
+  NIEBLA_EXTREMA:     { label: 'Niebla Extrema',     tip: 'Entorno. Amplifica outcomes de sorpresa y fatales. Visibilidad casi nula.' },
+  VACIO:              { label: 'Vacío',               tip: 'Entorno. Borde de un precipicio. Outcomes de caída al vacío son mucho más probables.' },
+  VIDRIO_ROTO:        { label: 'Vidrio Roto',        tip: 'Entorno (3 turnos). Peligro de cortes y resbalones. Moverse requiere cuidado.' },
+  // Bonos de banda
+  BANDA_MODERADA_BONUS: { label: '+1 Banda',         tip: 'Ventaja de diferencia moderada en dados. +1 a la siguiente tirada.' },
+  BANDA_REGULAR_BONUS:  { label: '+2 Banda',         tip: 'Ventaja de diferencia regular. +2 a la siguiente tirada.' },
+  BANDA_ALTA_BONUS:     { label: '+3 Banda',         tip: 'Dominio claro en el intercambio. +3 a la siguiente tirada.' },
+  BANDA_MUY_ALTA_BONUS: { label: '+4 Banda',         tip: 'Diferencia muy alta. +4 a la siguiente tirada.' },
+  BANDA_MAXIMA_BONUS:   { label: '+5 Banda',         tip: 'Diferencia máxima. +5 a la siguiente tirada.' },
+  BANDA_EXTREMA_BONUS:  { label: '+6 Banda',         tip: 'Diferencia extrema (solo posible con buffs/debuffs). +6 a la siguiente tirada.' },
+  // Otros
+  MOMENTUM_OVERFLOW:  { label: 'Overflow',           tip: 'Tirada efectiva superó el máximo (25). El exceso pasa como bono a la siguiente fase.' },
+  IMPROVISA:          { label: 'Improvisa',           tip: 'Sin arma formal. Improvisa con objeto del entorno o manos.' },
+};
+
+function effectTag(code, extraClass = '') {
+  const info = STATE_GLOSSARY[code];
+  const label = info ? info.label : code;
+  const tip   = info ? ` title="${info.tip}"` : '';
+  const cls   = `tag${extraClass ? ' ' + extraClass : ''}`;
+  return `<span class="${cls}"${tip}>${label}</span>`;
+}
+
 function updateEntorno(effects) {
   const strip = document.getElementById('entorno-strip');
   const empty = document.getElementById('entorno-empty');
@@ -227,7 +275,7 @@ function updateEntorno(effects) {
     strip.innerHTML = '';
     empty.style.display = 'block';
   } else {
-    strip.innerHTML = effects.map(e => `<span class="tag tag-entorno">${e}</span>`).join('');
+    strip.innerHTML = effects.map(e => effectTag(e, 'tag-entorno')).join('');
     empty.style.display = 'none';
   }
 }
@@ -271,7 +319,7 @@ function updateCard(side, counters, effects) {
   else if (pct > 55) card.classList.add('warning');
 
   const efDiv = document.getElementById(`${side}-effects`);
-  efDiv.innerHTML = effects.map(e => `<span class="tag">${e}</span>`).join('');
+  efDiv.innerHTML = effects.map(e => effectTag(e)).join('');
 }
 
 function resetCards() {
@@ -307,7 +355,7 @@ function renderPhase(p) {
 
   const effectsHtml = [p.effect_applied_p1, p.effect_applied_p2]
     .filter(Boolean)
-    .map(e => `<span class="tag">${e}</span>`)
+    .map(e => effectTag(e))
     .join('');
 
   // ── Entrada narrativa (columna izquierda) ──────────────────────────────────
@@ -364,9 +412,62 @@ function showWinner(side) {
   const name = side === 'P1' ? State.nameP1 : side === 'P2' ? State.nameP2 : side;
   document.getElementById('winner-name').textContent = name;
   document.getElementById('battle-summary').innerHTML = buildSummary(side);
+  buildBattleLog();
   document.getElementById('winner-overlay').style.display = 'flex';
   document.getElementById('btn-roll').disabled = true;
   document.getElementById('btn-sim-all').disabled = true;
+}
+
+function buildBattleLog() {
+  const actionLabel = {ATK: '⚔ Ataque', DEF: '🛡 Defensa', INT: '🔀 Maniobra'};
+  const nameP1 = State.nameP1;
+  const nameP2 = State.nameP2;
+
+  // Group phases by turn, in chronological order
+  const phases = [...State.phases];
+  const turns = {};
+  for (const p of phases) {
+    if (!turns[p.turn_number]) turns[p.turn_number] = [];
+    turns[p.turn_number].push(p);
+  }
+
+  let html = '';
+  for (const [t, tPhases] of Object.entries(turns)) {
+    html += `<div style="font-size:0.65rem;color:#3a3a3a;letter-spacing:2px;margin-top:10px;margin-bottom:4px;">TURNO ${t}</div>`;
+    for (const p of tPhases) {
+      const ef1 = p.effective_p1.toFixed(1);
+      const ef2 = p.effective_p2.toFixed(1);
+      const phaseWinner = p.phase_winner === 'A' ? nameP1 : p.phase_winner === 'B' ? nameP2 : '—';
+      const winCls = p.phase_winner === 'A' ? 'blog-winner-p1' : p.phase_winner === 'B' ? 'blog-winner-p2' : '';
+      const effectsHtml = [p.effect_applied_p1, p.effect_applied_p2]
+        .filter(Boolean).map(e => `<span class="tag">${e}</span>`).join(' ');
+
+      html += `
+        <div class="blog-entry">
+          <div class="blog-header">F${p.phase_number} · ${actionLabel[p.action_p1]||p.action_p1} vs ${actionLabel[p.action_p2]||p.action_p2}</div>
+          <div class="blog-dice">
+            <span class="dice-p1">🎲 ${nameP1} <b>${p.roll_p1}</b>${ef1 !== String(p.roll_p1) ? ` (ef ${ef1})` : ''}</span>
+            <span class="dice-vs">vs</span>
+            <span class="dice-p2">🎲 ${nameP2} <b>${p.roll_p2}</b>${ef2 !== String(p.roll_p2) ? ` (ef ${ef2})` : ''}</span>
+          </div>
+          <div class="blog-narrative">"${p.narrative_text}"</div>
+          <div class="blog-outcome">
+            <span class="${winCls}">Fase: ${phaseWinner}</span>
+            &nbsp;·&nbsp;
+            <span class="log-cnt-p1">${nameP1} +${p.counter_dmg_p1}</span>
+            &nbsp;·&nbsp;
+            <span class="log-cnt-p2">${nameP2} +${p.counter_dmg_p2}</span>
+            ${effectsHtml ? `&nbsp;${effectsHtml}` : ''}
+          </div>
+          ${p.battle_over ? `<div class="blog-fin">⚔ FIN · VICTORIA: ${p.winner === 'P1' ? nameP1 : nameP2}</div>` : ''}
+        </div>
+      `;
+    }
+  }
+
+  document.getElementById('battle-log-scroll').innerHTML = html;
+  // Reset collapse state
+  document.getElementById('battle-log-details').removeAttribute('open');
 }
 
 function buildSummary(winningSide) {
@@ -416,6 +517,114 @@ function buildSummary(winningSide) {
 async function rematch() {
   document.getElementById('winner-overlay').style.display = 'none';
   await startBattle(State.lastConfig);
+}
+
+/* ══════════════════════════════════════
+   PHASE CAROUSEL
+══════════════════════════════════════ */
+
+let _carouselPhases = [];
+let _carouselIdx = 0;
+let _carouselResolve = null;
+
+function showPhaseCarousel(phases) {
+  return new Promise(resolve => {
+    _carouselPhases = phases;
+    _carouselIdx = 0;
+    _carouselResolve = resolve;
+
+    const dots = document.getElementById('carousel-dots');
+    dots.innerHTML = phases.map((_, i) =>
+      `<span class="c-dot${i === 0 ? ' active' : ''}"></span>`
+    ).join('');
+
+    document.getElementById('carousel-turn-label').textContent =
+      `TURNO ${phases[0]?.turn_number ?? '?'}`;
+
+    _renderCarouselCard(0, 'right');
+    document.getElementById('phase-carousel').style.display = 'flex';
+  });
+}
+
+function _renderCarouselCard(idx, direction) {
+  const p = _carouselPhases[idx];
+  const actionLabel = {ATK: '⚔ Ataque', DEF: '🛡 Defensa', INT: '🔀 Maniobra'};
+  const nameP1 = State.nameP1;
+  const nameP2 = State.nameP2;
+
+  const ef1 = p.effective_p1.toFixed(1);
+  const ef2 = p.effective_p2.toFixed(1);
+  const phaseWinner = p.phase_winner === 'A' ? nameP1 : p.phase_winner === 'B' ? nameP2 : 'Empate';
+  const winCls = p.phase_winner === 'A' ? 'cwinner-p1' : p.phase_winner === 'B' ? 'cwinner-p2' : 'cwinner-tie';
+  const mismatch = p.roll_winner !== 'NONE' && (
+    (p.roll_winner === 'P1' && p.phase_winner === 'B') ||
+    (p.roll_winner === 'P2' && p.phase_winner === 'A')
+  );
+  const effectsHtml = [p.effect_applied_p1, p.effect_applied_p2]
+    .filter(Boolean).map(e => `<span class="tag">${e}</span>`).join(' ');
+
+  const track = document.getElementById('carousel-track');
+  const slideClass = direction === 'left' ? 'carousel-slide-left' : 'carousel-slide-right';
+
+  track.innerHTML = `
+    <div class="carousel-card ${slideClass}">
+      <div class="log-phase-header">
+        FASE ${p.phase_number} &nbsp;|&nbsp;
+        ${nameP1}: ${actionLabel[p.action_p1] || p.action_p1} &nbsp;vs&nbsp;
+        ${nameP2}: ${actionLabel[p.action_p2] || p.action_p2}
+      </div>
+      <div class="log-dice">
+        <span class="dice-p1">🎲 ${nameP1} <b>${p.roll_p1}</b>${ef1 !== String(p.roll_p1) ? ` <span class="dice-eff">(ef ${ef1})</span>` : ''}</span>
+        <span class="dice-vs">vs</span>
+        <span class="dice-p2">🎲 ${nameP2} <b>${p.roll_p2}</b>${ef2 !== String(p.roll_p2) ? ` <span class="dice-eff">(ef ${ef2})</span>` : ''}</span>
+      </div>
+      <div class="log-narrative">"${p.narrative_text}"</div>
+      <div class="log-counters">
+        <span class="log-cnt-p1">${nameP1} → ${p.counters_p1.toFixed(1)} <span style="color:#666">(+${p.counter_dmg_p1})</span></span>
+        <span class="log-cnt-p2">${nameP2} → ${p.counters_p2.toFixed(1)} <span style="color:#666">(+${p.counter_dmg_p2})</span></span>
+      </div>
+      ${effectsHtml ? `<div class="log-effects">${effectsHtml}</div>` : ''}
+      <div class="carousel-winner ${winCls}">
+        ${p.phase_winner !== 'NONE' ? `Fase: <b>${phaseWinner}</b>` : 'Empate de fase'}
+        ${mismatch ? ' <span class="math-warn">⚠</span>' : ''}
+      </div>
+      ${p.battle_over ? `<div class="log-fin">⚔ FIN — VICTORIA: ${p.winner === 'P1' ? nameP1 : p.winner === 'P2' ? nameP2 : p.winner}</div>` : ''}
+    </div>
+  `;
+
+  // Update dots
+  document.querySelectorAll('.c-dot').forEach((d, i) => {
+    d.className = 'c-dot' + (i === idx ? ' active' : i < idx ? ' seen' : '');
+  });
+
+  // Update nav buttons
+  const prevBtn = document.getElementById('carousel-prev');
+  const nextBtn = document.getElementById('carousel-next');
+  prevBtn.style.visibility = idx === 0 ? 'hidden' : 'visible';
+
+  if (idx === _carouselPhases.length - 1) {
+    nextBtn.textContent = 'Continuar ✓';
+    nextBtn.className = 'btn-primary';
+  } else {
+    nextBtn.textContent = 'Siguiente →';
+    nextBtn.className = 'btn-primary';
+  }
+}
+
+function carouselNav(dir) {
+  const newIdx = _carouselIdx + dir;
+
+  if (newIdx >= _carouselPhases.length) {
+    document.getElementById('phase-carousel').style.display = 'none';
+    if (_carouselResolve) { _carouselResolve(); _carouselResolve = null; }
+    return;
+  }
+
+  if (newIdx < 0) return;
+
+  const direction = dir > 0 ? 'right' : 'left';
+  _carouselIdx = newIdx;
+  _renderCarouselCard(_carouselIdx, direction);
 }
 
 /* ══════════════════════════════════════

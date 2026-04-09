@@ -1,3 +1,4 @@
+import json
 from fastapi import APIRouter, HTTPException
 from app.schemas.battle import BattleStartRequest, BattlePhaseRequest, PhaseResult, SimulateTurnRequest
 from app.repositories import battle_repo as repo
@@ -30,6 +31,15 @@ def start_battle(payload: BattleStartRequest) -> dict:
     repo.create_battle_state(battle_id, "P2", w2["code"])
     repo.create_accumulators(battle_id, "P1")
     repo.create_accumulators(battle_id, "P2")
+
+    # Aplicar estados iniciales del entorno (GDD sección 9b).
+    # ej: precipicio → VACIO activo desde turno 1, niebla → NIEBLA_EXTREMA.
+    if arena:
+        raw_tags = arena.get("initial_state_tags")
+        if raw_tags:
+            tags = json.loads(raw_tags) if isinstance(raw_tags, str) else raw_tags
+            for tag in tags:
+                repo.add_effect(battle_id, "ENTORNO", tag, None, "arena_initial")
 
     return {
         "battle_id": battle_id,

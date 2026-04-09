@@ -5,7 +5,10 @@ const State = {
   nameP1:     'P1',
   nameP2:     'P2',
   showMath:   false,
-  // Acciones seleccionadas por fase (índices 0-2), null = sin seleccionar
   actionsP1:  [null, null, null],
   actionsP2:  [null, null, null],
+  // Guardado para rematch
+  lastConfig: null,
+  // Acumulador de fases para el resumen
+  phases:     [],
 };

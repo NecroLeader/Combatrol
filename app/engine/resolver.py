@@ -58,9 +58,20 @@ def _roll_dice(battle_id: int, side: str) -> tuple[int, float]:
 # Sesgo por ganador del dado, escala con la magnitud de diferencia.
 # A mayor banda, más determinista el resultado hacia quien dominó el dado.
 _BAND_BIAS = {
-    'BAJA': 1.0, 'REGULAR': 1.6, 'MODERADA': 2.5,
-    'ALTA': 4.0, 'MUY_ALTA': 6.0, 'MAXIMA': 9.0, 'EXTREMA': 15.0,
+    'BAJA': 1.4, 'REGULAR': 2.5, 'MODERADA': 4.0,
+    'ALTA': 6.0, 'MUY_ALTA': 9.0, 'MAXIMA': 14.0, 'EXTREMA': 22.0,
     'DEFAULT': 1.0,
+}
+
+# Bono de banda: ganador de fase recibe modificador temporal para la siguiente fase.
+# GDD sección 4: "el bono se aplica al ganador de la fase como modificador temporal".
+_BAND_BONUS_EFFECT = {
+    'MODERADA': 'BANDA_MODERADA_BONUS',
+    'REGULAR':  'BANDA_REGULAR_BONUS',
+    'ALTA':     'BANDA_ALTA_BONUS',
+    'MUY_ALTA': 'BANDA_MUY_ALTA_BONUS',
+    'MAXIMA':   'BANDA_MAXIMA_BONUS',
+    'EXTREMA':  'BANDA_EXTREMA_BONUS',
 }
 
 
@@ -72,6 +83,12 @@ def _weighted_choice(candidates: list[dict], battle_id: int,
     """Elige un outcome de la lista aplicando multiplicadores de estado
     y sesgo hacia el ganador del dado proporcional a la banda de diferencia."""
     all_states = list(set(active_states_p1 + active_states_p2))
+
+    # Regla especial: AMBOS CAÍDOS → multiplicadores de CAIDO se anulan.
+    # GDD sección 9: "Ambos CAÍDOS: Multiplicadores se anulan. Vuelve a base_weight."
+    if "CAIDO" in active_states_p1 and "CAIDO" in active_states_p2:
+        all_states = [s for s in all_states if s != "CAIDO"]
+
     bias = _BAND_BIAS.get(diff_band, 1.0)
     weights = []
     for c in candidates:
@@ -128,7 +145,9 @@ def _apply_effect(battle_id: int, side: str, effect_code: str | None,
         debuffs = {"DESARMADO", "ARMA_ROTA", "DESMEMBRADO", "CAIDO",
                    "POS_DESFAVORABLE", "FATIGA", "VACILACION", "PANICO"}
         if not any(e in debuffs for e in opp_effects):
-            _add_effect_safe(battle_id, opp, "HIPEROFFENSIVO", current_phase_abs, "caido_bonus")
+            # +2 para que sobreviva expire_effects de la siguiente fase
+            # y sea visible para _sum_mods en los dados de esa fase.
+            _add_effect_safe(battle_id, opp, "HIPEROFFENSIVO", current_phase_abs + 2, "caido_bonus")
 
     return effect_code
 
@@ -233,17 +252,28 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     phase  = battle["phase_number"]
     phase_abs = _phase_abs(turn, phase)
 
-    # Expirar efectos vencidos
-    repo.expire_effects(battle_id, phase_abs)
-
-    state_p1 = repo.get_battle_state(battle_id, "P1")
-    state_p2 = repo.get_battle_state(battle_id, "P2")
-
-    # CAIDO: el jugador no puede actuar — forzamos a la única opción válida
+    # ── Restricciones de estado ANTES de expirar efectos ────────────────────
+    # Los efectos con expires_at = prev_phase_abs siguen activos hasta que
+    # expire_effects los elimina. Para que restrinjan la acción actual, el
+    # check debe ocurrir ANTES de expire_effects.
+    #
+    # CAIDO: fuerza INT (única opción válida desde el suelo).
     if repo.has_effect(battle_id, "P1", "CAIDO"):
         action_p1 = "INT"
     if repo.has_effect(battle_id, "P2", "CAIDO"):
         action_p2 = "INT"
+    # PANICO: bloquea ATK, fuerza DEF (supervivencia).
+    # GDD sección 9: PANICO "bloquea ATAQUE".
+    if repo.has_effect(battle_id, "P1", "PANICO") and action_p1 == "ATK":
+        action_p1 = "DEF"
+    if repo.has_effect(battle_id, "P2", "PANICO") and action_p2 == "ATK":
+        action_p2 = "DEF"
+
+    # Expirar efectos vencidos (DESPUÉS de los checks de bloqueo de acción)
+    repo.expire_effects(battle_id, phase_abs)
+
+    state_p1 = repo.get_battle_state(battle_id, "P1")
+    state_p2 = repo.get_battle_state(battle_id, "P2")
 
     # ── Paso 1: spam ATK check ────────────────────────────────────────────────
     _check_fatiga(battle_id, "P1", action_p1, phase_abs)
@@ -270,6 +300,9 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     # ── Paso 5: consultar outcome_matrix ────────────────────────────────────
     active_p1 = repo.get_active_effect_codes(battle_id, "P1")
     active_p2 = repo.get_active_effect_codes(battle_id, "P2")
+    # Efectos de entorno (arena initial states, VIDRIO_ROTO, etc.)
+    # Se incluyen en ambos lados para que sus multiplicadores de estado apliquen.
+    active_entorno = repo.get_active_effect_codes(battle_id, "ENTORNO")
 
     # Quién gana el dado (A=P1, B=P2, NONE=empate) — se usa para sesgar el DEFAULT
     dice_leader = "A" if eff_p1 > eff_p2 else ("B" if eff_p2 > eff_p1 else "NONE")
@@ -291,8 +324,12 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
             "is_fatal": 0,
         }
     else:
-        outcome = _weighted_choice(candidates, battle_id, active_p1, active_p2,
-                                   dice_leader=dice_leader, diff_band=diff_band)
+        outcome = _weighted_choice(
+            candidates, battle_id,
+            active_p1 + active_entorno,  # entorno aplica como contexto compartido
+            active_p2 + active_entorno,
+            dice_leader=dice_leader, diff_band=diff_band,
+        )
 
     # ── Paso 6: aplicar efectos ──────────────────────────────────────────────
     # Determinar qué efecto va a P1 (A) y cuál a P2 (B)
@@ -301,6 +338,19 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
 
     applied_p1 = _apply_effect(battle_id, "P1", effect_for_p1, phase_abs)
     applied_p2 = _apply_effect(battle_id, "P2", effect_for_p2, phase_abs)
+
+    # ── Bono por banda de diferencia ─────────────────────────────────────────
+    # GDD sección 4: el ganador de la fase recibe modificador temporal para
+    # la siguiente fase, proporcional a la banda de diferencia.
+    # expires_at = phase_abs + 2 → survives expire_effects de la siguiente fase
+    # y es visible en _sum_mods cuando se tiran los dados de esa fase.
+    if diff_band in _BAND_BONUS_EFFECT and outcome["phase_winner"] in ('A', 'B'):
+        winner_side = "P1" if outcome["phase_winner"] == 'A' else "P2"
+        band_eff = _BAND_BONUS_EFFECT[diff_band]
+        # Eliminar bono de banda previo (solo aplica el más reciente)
+        for old_eff in _BAND_BONUS_EFFECT.values():
+            repo.remove_effect(battle_id, winner_side, old_eff)
+        repo.add_effect(battle_id, winner_side, band_eff, phase_abs + 2, "band_bonus")
 
     # ── Paso 7: actualizar contadores ────────────────────────────────────────
     dmg_p1 = _counter_dmg_for_side(outcome, is_player_A=p1_is_A)
