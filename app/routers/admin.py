@@ -1,9 +1,19 @@
 """Endpoints de administración: leer/editar tablas de reglas."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Security
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from app.database import fetch_all, fetch_one, execute
+from app.config import ADMIN_TOKEN
 
-router = APIRouter(prefix="/admin", tags=["admin"])
+_bearer = HTTPBearer()
+
+
+def require_admin(creds: HTTPAuthorizationCredentials = Security(_bearer)):
+    if not ADMIN_TOKEN or creds.credentials != ADMIN_TOKEN:
+        raise HTTPException(status_code=401, detail="Token inválido")
+
+
+router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[Depends(require_admin)])
 
 
 @router.get("/weapons")

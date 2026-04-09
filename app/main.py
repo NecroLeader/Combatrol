@@ -3,7 +3,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import battle, hardware, admin
-from app.config import API_PREFIX
+from app.config import API_PREFIX, DOMAIN
 
 app = FastAPI(
     title="Combatrol API",
@@ -13,7 +13,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[f"https://{DOMAIN}", f"http://{DOMAIN}"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

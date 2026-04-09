@@ -22,5 +22,9 @@ SKILL_THRESHOLDS = [
     (120, "EPICA"),
 ]
 
-READ_TOKEN  = os.getenv("COMBATROL_READ_TOKEN", "")
-ADMIN_TOKEN = os.getenv("COMBATROL_ADMIN_TOKEN", "")
+READ_TOKEN       = os.getenv("COMBATROL_READ_TOKEN", "")
+ADMIN_TOKEN      = os.getenv("COMBATROL_ADMIN_TOKEN", "")
+
+DOMAIN           = os.getenv("COMBATROL_DOMAIN", "combatrol.duckdns.org")
+ADMIN_EMAIL      = os.getenv("COMBATROL_ADMIN_EMAIL", "")
+GOOGLE_CLIENT_ID = os.getenv("COMBATROL_GOOGLE_CLIENT_ID", "")
