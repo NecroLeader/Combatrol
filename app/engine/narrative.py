@@ -7,15 +7,19 @@ from app.database import fetch_all
 
 def select_narrative(pool_tag: str, active_tags: list[str]) -> tuple[str, str]:
     """
-    Busca templates con pool_tag dado, filtra por required/excluded tags,
-    selecciona uno por peso. Devuelve (template_text, extra_effects_json).
+    Busca templates con pool_tag dado o con pool_tag que comience con pool_tag + '_'
+    (prefijo). Esto permite reutilizar las variantes específicas sembradas en
+    seed_narratives_v2/v3 (e.g., DEF_ATK_CONTRA_EPICO, ATK_ATK_CHOQUE_BRUTAL, etc.)
+    sin necesidad de que el outcome_matrix las enumere individualmente.
+    Filtra por required/excluded tags y selecciona uno por peso.
+    Devuelve (template_text, extra_effects_json).
     """
     rows = fetch_all(
-        "SELECT * FROM narrative_templates WHERE pool_tag=?",
-        (pool_tag,),
+        "SELECT * FROM narrative_templates WHERE pool_tag=? OR pool_tag LIKE ?",
+        (pool_tag, pool_tag + "_%"),
     )
     if not rows:
-        # Buscar genérico
+        # Fallback genérico
         rows = fetch_all(
             "SELECT * FROM narrative_templates WHERE pool_tag='GENERIC_INTERCAMBIO'"
         )

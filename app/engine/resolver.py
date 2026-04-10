@@ -125,7 +125,9 @@ def _weighted_choice(candidates: list[dict], battle_id: int,
         elif pw == 'B':
             actor, receptor = states_p2, states_p1
         else:
-            actor, receptor = states_p1, states_p2
+            # NONE (empate): no hay actor ni receptor — solo multiplicadores BOTH/ENTORNO aplican.
+            # Evita sesgo estructural hacia P1 en outcomes de empate.
+            actor, receptor = [], []
 
         w = c["base_weight"] * rules.get_state_multipliers(
             c["outcome_code"], actor, receptor, active_states_entorno
@@ -146,9 +148,76 @@ def _add_effect_safe(battle_id: int, side: str, effect_code: str,
         repo.add_effect(battle_id, side, effect_code, expires_at_phase, source)
 
 
+def _apply_effect(battle_id: int, side: str, effect_code: str | None,
+                  current_phase_abs: int, *,
+                  duration_override: int | None = None,
+                  source: str = "outcome_matrix") -> str | None:
+    """Aplica un efecto a un side. Función unificada usada por outcome_matrix y narrativa.
+
+    Parámetros opcionales (keyword-only):
+    - duration_override: sobreescribe la duración del efecto definida en DB.
+      Para extra_effects narrativos, se aplica min(dur, 2) para garantizar
+      que el efecto sobreviva al menos un expire_effects. dur=0 es válido
+      (bloqueo de acción en la siguiente fase únicamente).
+    - source: etiqueta de origen para trazabilidad en battle_active_effects.
+
+    Efectos con applies_to=ENTORNO se guardan siempre bajo side='ENTORNO'.
+    POS_FAVORABLE y POS_DESFAVORABLE son mutuamente excluyentes — siempre.
+    """
+    if not effect_code:
+        return None
+    effect_def = rules.get_combat_effect(effect_code)
+    if not effect_def:
+        return None
+
+    # Efectos de entorno van al lado ENTORNO sin importar quién los activó
+    effective_side = "ENTORNO" if effect_def["applies_to"] == "ENTORNO" else side
+
+    # POS_FAVORABLE y POS_DESFAVORABLE son mutuamente excluyentes por jugador.
+    # Se aplica siempre, sin importar si el efecto viene de outcome_matrix o narrativa.
+    if effect_code == "POS_FAVORABLE":
+        repo.remove_effect(battle_id, effective_side, "POS_DESFAVORABLE")
+    elif effect_code == "POS_DESFAVORABLE":
+        repo.remove_effect(battle_id, effective_side, "POS_FAVORABLE")
+
+    duration = duration_override if duration_override is not None else effect_def["duration_phases"]
+    if duration == -1:
+        expires = None
+    elif duration == 0:
+        # Duración 0 = bloqueo de acción en la siguiente fase (visible en state-checks,
+        # eliminado por expire_effects al principio de esa fase).
+        expires = current_phase_abs
+    else:
+        if duration_override is not None:
+            # Extra_effects: mínimo 2 para sobrevivir expire_effects de la siguiente fase
+            # y ser visible en _sum_mods al tirar dados de esa fase.
+            expires = current_phase_abs + max(duration, 2)
+        else:
+            expires = current_phase_abs + duration
+
+    _add_effect_safe(battle_id, effective_side, effect_code, expires, source)
+
+    # CAIDO: automáticamente da HIPEROFFENSIVO al oponente si no tiene debuff
+    if effect_code == "CAIDO":
+        opp = "P2" if side == "P1" else "P1"
+        opp_effects = repo.get_active_effect_codes(battle_id, opp)
+        debuffs = {"DESARMADO", "ARMA_ROTA", "DESMEMBRADO", "CAIDO",
+                   "POS_DESFAVORABLE", "FATIGA", "VACILACION", "PANICO"}
+        if not any(e in debuffs for e in opp_effects):
+            # +2 para que sobreviva expire_effects de la siguiente fase
+            # y sea visible para _sum_mods en los dados de esa fase.
+            _add_effect_safe(battle_id, opp, "HIPEROFFENSIVO", current_phase_abs + 2, "caido_bonus")
+
+    return effect_code
+
+
 def _apply_narrative_effects(battle_id: int, extra_effects_json: str,
                               outcome: dict, phase_abs: int) -> None:
     """Aplica efectos adicionales probabilísticos definidos en el template narrativo.
+
+    Delega en _apply_effect para garantizar coherencia de exclusiones y timing
+    idénticos a los efectos de outcome_matrix (POS_FAVORABLE/POS_DESFAVORABLE
+    mutuamente excluyentes, ENTORNO routing, etc.).
 
     Formato de extra_effects_json (array JSON):
     [
@@ -187,64 +256,11 @@ def _apply_narrative_effects(battle_id: int, extra_effects_json: str,
         if not effect_code:
             continue
 
-        effect_def = rules.get_combat_effect(effect_code)
-        if not effect_def:
-            continue
-
-        dur = e.get("duration_phases")
-        if dur is None:
-            dur = effect_def["duration_phases"]
-
-        if dur == -1:
-            expires = None
-        else:
-            expires = phase_abs + max(dur, 2)  # mínimo 2 para sobrevivir expire_effects
-
-        source = e.get("source", "narrative")
-        _add_effect_safe(battle_id, side, effect_code, expires, source)
-
-
-def _apply_effect(battle_id: int, side: str, effect_code: str | None,
-                  current_phase_abs: int) -> str | None:
-    """Aplica un efecto a un side. Devuelve el código aplicado o None.
-    Efectos con applies_to=ENTORNO se guardan siempre bajo side='ENTORNO'."""
-    if not effect_code:
-        return None
-    effect_def = rules.get_combat_effect(effect_code)
-    if not effect_def:
-        return None
-
-    # Efectos de entorno van al lado ENTORNO sin importar quién los activó
-    effective_side = "ENTORNO" if effect_def["applies_to"] == "ENTORNO" else side
-
-    # POS_FAVORABLE y POS_DESFAVORABLE son mutuamente excluyentes por jugador
-    if effect_code == "POS_FAVORABLE":
-        repo.remove_effect(battle_id, effective_side, "POS_DESFAVORABLE")
-    elif effect_code == "POS_DESFAVORABLE":
-        repo.remove_effect(battle_id, effective_side, "POS_FAVORABLE")
-
-    duration = effect_def["duration_phases"]
-    if duration == -1:
-        expires = None
-    elif duration == 0:
-        expires = current_phase_abs
-    else:
-        expires = current_phase_abs + duration
-
-    _add_effect_safe(battle_id, effective_side, effect_code, expires, source="outcome_matrix")
-
-    # CAIDO: automáticamente da HIPEROFFENSIVO al oponente si no tiene debuff
-    if effect_code == "CAIDO":
-        opp = "P2" if side == "P1" else "P1"
-        opp_effects = repo.get_active_effect_codes(battle_id, opp)
-        debuffs = {"DESARMADO", "ARMA_ROTA", "DESMEMBRADO", "CAIDO",
-                   "POS_DESFAVORABLE", "FATIGA", "VACILACION", "PANICO"}
-        if not any(e in debuffs for e in opp_effects):
-            # +2 para que sobreviva expire_effects de la siguiente fase
-            # y sea visible para _sum_mods en los dados de esa fase.
-            _add_effect_safe(battle_id, opp, "HIPEROFFENSIVO", current_phase_abs + 2, "caido_bonus")
-
-    return effect_code
+        # Delegar en _apply_effect para respetar todas las reglas del sistema
+        # (exclusiones, ENTORNO routing, CAIDO → HIPEROFFENSIVO, etc.)
+        _apply_effect(battle_id, side, effect_code, phase_abs,
+                      duration_override=e.get("duration_phases"),
+                      source=e.get("source", "narrative"))
 
 
 def _check_fatiga(battle_id: int, side: str, action: str, current_phase_abs: int) -> None:
