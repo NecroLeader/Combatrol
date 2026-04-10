@@ -152,14 +152,121 @@ VALUES
 -- ============================================================
 
 INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplier, applies_to) VALUES
--- Caído amplifica outcomes fatales contra el receptor
+-- ── CAIDO ───────────────────────────────────────────────────────────────────
+-- Amplifica outcomes fatales contra el receptor caído
 ('CAIDO',        'ATK_ATK_MAX_MX_FATAL_ESTOCADA_A',          2.5,  'RECEPTOR'),
 ('CAIDO',        'ATK_ATK_EXT_MX_FATAL_REMATE_A',            2.5,  'RECEPTOR'),
--- Vacío amplifica caída al precipicio
+
+-- ── VACIO ────────────────────────────────────────────────────────────────────
+-- Amplifica caída al precipicio (×5 sobre outcomes de precipicio)
 ('VACIO',        'ATK_INT_EXT_MX_ATAQUE_AL_PRECIPICIO',      5.0,  'BOTH'),
 ('VACIO',        'INT_ATK_EXT_MX_ATAQUE_AL_PRECIPICIO',      5.0,  'BOTH'),
--- Niebla amplifica sorpresa
-('NIEBLA_EXTREMA','ATK_ATK_DEFAULT_DOMINA_A',                1.5,  'ACTOR');
+
+-- ── NIEBLA_EXTREMA ───────────────────────────────────────────────────────────
+-- Amplifica ataques sorpresa y dominio por niebla
+('NIEBLA_EXTREMA','ATK_ATK_DEFAULT_DOMINA_A',                1.5,  'ACTOR'),
+('NIEBLA_EXTREMA','ATK_ATK_DEFAULT_DOMINA_B',                1.5,  'ACTOR'),
+
+-- ── FATIGA ───────────────────────────────────────────────────────────────────
+-- El actor fatigado domina menos (penaliza outcomes decisivos del fatigado)
+('FATIGA',       'ATK_ATK_DEFAULT_DOMINA_A',                 0.65, 'ACTOR'),
+('FATIGA',       'ATK_ATK_DEFAULT_DOMINA_B',                 0.65, 'ACTOR'),
+('FATIGA',       'ATK_DEF_DEFAULT_IMPACTO',                  0.70, 'ACTOR'),
+('FATIGA',       'ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',       0.75, 'ACTOR'),
+('FATIGA',       'ATK_ATK_DEFAULT_VENTAJA_LEVE_A',           0.80, 'ACTOR'),
+('FATIGA',       'ATK_ATK_DEFAULT_VENTAJA_LEVE_B',           0.80, 'ACTOR'),
+
+-- ── VACILACION ───────────────────────────────────────────────────────────────
+-- La duda reduce efectividad del vacilante como actor
+('VACILACION',   'ATK_ATK_DEFAULT_DOMINA_A',                 0.70, 'ACTOR'),
+('VACILACION',   'ATK_ATK_DEFAULT_DOMINA_B',                 0.70, 'ACTOR'),
+('VACILACION',   'INT_ATK_DEFAULT_INT_LOGRA',                0.75, 'ACTOR'),
+('VACILACION',   'INT_DEF_DEFAULT_INT_LOGRA',                0.75, 'ACTOR'),
+
+-- ── PANICO ───────────────────────────────────────────────────────────────────
+-- El receptor en pánico es más vulnerable a ataques y déficit defensivo
+('PANICO',       'ATK_DEF_DEFAULT_IMPACTO',                  2.0,  'RECEPTOR'),
+('PANICO',       'ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',       1.6,  'RECEPTOR'),
+-- El actor en pánico puede defenderse con éxito desesperado (adrenalina)
+('PANICO',       'DEF_ATK_DEFAULT_CONTRA',                   1.8,  'ACTOR'),
+('PANICO',       'DEF_ATK_DEFAULT_BLOQUEO',                  1.5,  'ACTOR'),
+
+-- ── HIPEROFFENSIVO ───────────────────────────────────────────────────────────
+-- Amplifica fuertemente los ataques dominantes del hiperofensivo
+('HIPEROFFENSIVO','ATK_ATK_DEFAULT_DOMINA_A',                2.0,  'ACTOR'),
+('HIPEROFFENSIVO','ATK_ATK_DEFAULT_DOMINA_B',                2.0,  'ACTOR'),
+('HIPEROFFENSIVO','ATK_DEF_DEFAULT_IMPACTO',                 1.8,  'ACTOR'),
+('HIPEROFFENSIVO','ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',      1.5,  'ACTOR'),
+('HIPEROFFENSIVO','ATK_ATK_EXT_MX_FATAL_REMATE_A',           1.8,  'ACTOR'),
+('HIPEROFFENSIVO','ATK_ATK_EXT_MX_FATAL_ESTOCADA_A',         1.8,  'ACTOR'),
+('HIPEROFFENSIVO','ATK_DEF_EXT_MX_FATAL_ESTOCADA',           1.8,  'ACTOR'),
+('HIPEROFFENSIVO','ATK_DEF_EXT_MX_FATAL_HACHAZO',            1.8,  'ACTOR'),
+
+-- ── POS_FAVORABLE ────────────────────────────────────────────────────────────
+-- Ventaja posicional amplifica wins del posicionado
+('POS_FAVORABLE','ATK_ATK_DEFAULT_DOMINA_A',                 1.5,  'ACTOR'),
+('POS_FAVORABLE','ATK_ATK_DEFAULT_DOMINA_B',                 1.5,  'ACTOR'),
+('POS_FAVORABLE','INT_ATK_DEFAULT_INT_LOGRA',                1.5,  'ACTOR'),
+('POS_FAVORABLE','INT_DEF_DEFAULT_INT_LOGRA',                1.5,  'ACTOR'),
+('POS_FAVORABLE','DEF_ATK_DEFAULT_CONTRA',                   1.3,  'ACTOR'),
+('POS_FAVORABLE','DEF_ATK_DEFAULT_BLOQUEO',                  1.3,  'ACTOR'),
+
+-- ── POS_DESFAVORABLE ─────────────────────────────────────────────────────────
+-- Mala posición amplifica ataques recibidos
+('POS_DESFAVORABLE','ATK_DEF_DEFAULT_IMPACTO',               1.5,  'RECEPTOR'),
+('POS_DESFAVORABLE','ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',    1.3,  'RECEPTOR'),
+('POS_DESFAVORABLE','ATK_ATK_DEFAULT_DOMINA_A',              1.3,  'RECEPTOR'),
+('POS_DESFAVORABLE','ATK_ATK_DEFAULT_DOMINA_B',              1.3,  'RECEPTOR'),
+
+-- ── DESARMADO ────────────────────────────────────────────────────────────────
+-- Combatiente desarmado es muy vulnerable a ataques con éxito
+('DESARMADO',    'ATK_DEF_DEFAULT_IMPACTO',                  2.0,  'RECEPTOR'),
+('DESARMADO',    'ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',       1.8,  'RECEPTOR'),
+('DESARMADO',    'DEF_ATK_DEFAULT_IMPACTO',                  2.0,  'RECEPTOR'),
+('DESARMADO',    'ATK_DEF_EXT_MX_FATAL_ESTOCADA',            2.5,  'RECEPTOR'),
+('DESARMADO',    'ATK_DEF_EXT_MX_FATAL_HACHAZO',             2.5,  'RECEPTOR'),
+('DESARMADO',    'ATK_DEF_MAX_MX_FATAL_ESTOCADA',            2.0,  'RECEPTOR'),
+
+-- ── DESMEMBRADO ──────────────────────────────────────────────────────────────
+-- Herida grave: amplifica aún más el daño recibido y los outcomes fatales
+('DESMEMBRADO',  'ATK_DEF_DEFAULT_IMPACTO',                  2.5,  'RECEPTOR'),
+('DESMEMBRADO',  'ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',       2.0,  'RECEPTOR'),
+('DESMEMBRADO',  'ATK_ATK_DEFAULT_DOMINA_A',                 1.8,  'RECEPTOR'),
+('DESMEMBRADO',  'ATK_ATK_DEFAULT_DOMINA_B',                 1.8,  'RECEPTOR'),
+('DESMEMBRADO',  'ATK_DEF_EXT_MX_FATAL_ESTOCADA',           3.0,  'RECEPTOR'),
+('DESMEMBRADO',  'ATK_DEF_EXT_MX_FATAL_HACHAZO',            3.0,  'RECEPTOR'),
+
+-- ── ESPACIO_REDUCIDO (entorno) ───────────────────────────────────────────────
+-- Espacio estrecho favorece INT y penaliza ATK_ATK dominante
+('ESPACIO_REDUCIDO','INT_INT_DEFAULT_A_LOGRA',               1.8,  'BOTH'),
+('ESPACIO_REDUCIDO','INT_INT_DEFAULT_B_LOGRA',               1.8,  'BOTH'),
+('ESPACIO_REDUCIDO','INT_INT_DEFAULT_CRUCE_DE_MANIOBRAS',    1.5,  'BOTH'),
+('ESPACIO_REDUCIDO','ATK_ATK_DEFAULT_DOMINA_A',              0.6,  'BOTH'),
+('ESPACIO_REDUCIDO','ATK_ATK_DEFAULT_DOMINA_B',              0.6,  'BOTH'),
+('ESPACIO_REDUCIDO','ATK_ATK_DEFAULT_INTERCAMBIO_BRUSCO',    1.4,  'BOTH'),
+
+-- ── WEAPON TAGS — impacto mecánico de tipo de arma ──────────────────────────
+-- pesado: armas grandes (mandoble) dominan ATK pero son más lentas en INT
+('pesado',       'ATK_DEF_DEFAULT_IMPACTO',                  1.4,  'ACTOR'),
+('pesado',       'ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',       1.3,  'ACTOR'),
+('pesado',       'ATK_ATK_DEFAULT_DOMINA_A',                 1.3,  'ACTOR'),
+('pesado',       'ATK_ATK_DEFAULT_DOMINA_B',                 1.3,  'ACTOR'),
+('pesado',       'INT_ATK_DEFAULT_INT_LOGRA',                0.7,  'ACTOR'),
+('pesado',       'INT_DEF_DEFAULT_INT_LOGRA',                0.7,  'ACTOR'),
+-- rapido: armas ágiles (espada, daga) mejoran INT y ataques rápidos
+('rapido',       'INT_ATK_DEFAULT_INT_LOGRA',                1.4,  'ACTOR'),
+('rapido',       'INT_DEF_DEFAULT_INT_LOGRA',                1.4,  'ACTOR'),
+('rapido',       'ATK_INT_DEFAULT_ATK_PASA',                 1.3,  'ACTOR'),
+('rapido',       'ATK_ATK_DEFAULT_DOMINA_A',                 1.1,  'ACTOR'),
+('rapido',       'ATK_ATK_DEFAULT_DOMINA_B',                 1.1,  'ACTOR'),
+-- intimidante: presencia que asusta (mandoble) amplifica dominio y desestabiliza
+('intimidante',  'ATK_ATK_DEFAULT_DOMINA_A',                 1.3,  'ACTOR'),
+('intimidante',  'ATK_ATK_DEFAULT_DOMINA_B',                 1.3,  'ACTOR'),
+('intimidante',  'ATK_DEF_DEFAULT_IMPACTO',                  1.2,  'ACTOR'),
+-- sigilo: armas furtivas (daga) amplifican interrupciones sorpresa
+('sigilo',       'INT_ATK_DEFAULT_INT_LOGRA',                1.5,  'ACTOR'),
+('sigilo',       'ATK_INT_DEFAULT_INT_LOGRA',                1.5,  'ACTOR'),
+('sigilo',       'INT_DEF_DEFAULT_INT_LOGRA',                1.4,  'ACTOR');
 
 -- ============================================================
 -- NARRATIVA BASE (mínima para que el engine no falle en MVP)
@@ -205,6 +312,31 @@ VALUES
 ('FATAL_REMATE',           'El golpe final llega cuando ya no hay posibilidad de defensa.',   '["vulnerable"]','[]','[]',0.5),
 ('INT_INT_CAOS_TORPE',     'Ninguno sabe muy bien qué está haciendo. La situación es ridícula.','[]','[]','[]',1.0),
 ('INT_INT_TROPIEZO_MUTUO', 'Los dos se estorban y pierden el equilibrio.',                    '[]','[]','[]',1.0);
+
+-- ============================================================
+-- EXTRA_EFFECTS en templates narrativos (narrativa → mecánica)
+-- Estos UPDATE garantizan que incluso clones limpios tengan extra_effects
+-- en templates que demuestran el sistema. Formato JSON:
+-- [{"target":"ACTOR|RECEPTOR|P1|P2","effect":"CODE","duration_phases":N,"chance":0.X}]
+-- ============================================================
+
+UPDATE narrative_templates SET extra_effects = '[{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":2,"chance":0.30,"source":"narrative"}]'
+    WHERE pool_tag = 'DEF_ATK_CONTRA';
+
+UPDATE narrative_templates SET extra_effects = '[{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":2,"chance":0.40,"source":"narrative"}]'
+    WHERE pool_tag = 'ATK_DEF_CONTRA';
+
+UPDATE narrative_templates SET extra_effects = '[{"target":"RECEPTOR","effect":"POS_DESFAVORABLE","duration_phases":2,"chance":0.25,"source":"narrative"}]'
+    WHERE pool_tag = 'ATK_DEF_GUARDIA_ROTA';
+
+UPDATE narrative_templates SET extra_effects = '[{"target":"RECEPTOR","effect":"VACILACION","duration_phases":3,"chance":0.20,"source":"narrative"}]'
+    WHERE pool_tag = 'ATK_DEF_CONTRA_EPICO';
+
+UPDATE narrative_templates SET extra_effects = '[{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":2,"chance":0.35,"source":"narrative"},{"target":"RECEPTOR","effect":"VACILACION","duration_phases":3,"chance":0.15,"source":"narrative"}]'
+    WHERE pool_tag = 'DEF_ATK_CONTRA';
+
+UPDATE narrative_templates SET extra_effects = '[{"target":"ACTOR","effect":"VACILACION","duration_phases":2,"chance":0.12,"source":"narrative"},{"target":"RECEPTOR","effect":"VACILACION","duration_phases":2,"chance":0.12,"source":"narrative"}]'
+    WHERE pool_tag = 'ATK_ATK_CHOQUE_EPICO';
 
 -- ============================================================
 -- CONFIG DE BATALLA

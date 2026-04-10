@@ -5,10 +5,10 @@ import random
 from app.database import fetch_all
 
 
-def select_narrative(pool_tag: str, active_tags: list[str]) -> str:
+def select_narrative(pool_tag: str, active_tags: list[str]) -> tuple[str, str]:
     """
     Busca templates con pool_tag dado, filtra por required/excluded tags,
-    selecciona uno por peso. Devuelve el texto o un fallback genérico.
+    selecciona uno por peso. Devuelve (template_text, extra_effects_json).
     """
     rows = fetch_all(
         "SELECT * FROM narrative_templates WHERE pool_tag=?",
@@ -30,13 +30,18 @@ def select_narrative(pool_tag: str, active_tags: list[str]) -> str:
         if any(tag in active_tags for tag in excluded):
             continue
 
-        candidates.append((row["template_text"], row["weight"]))
+        candidates.append((
+            row["template_text"],
+            row["weight"],
+            row.get("extra_effects") or "[]",
+        ))
 
     if not candidates:
-        return "El intercambio se resuelve sin consecuencias claras."
+        return "El intercambio se resuelve sin consecuencias claras.", "[]"
 
-    texts, weights = zip(*candidates)
-    return random.choices(texts, weights=weights, k=1)[0]
+    texts, weights, extra_effects = zip(*candidates)
+    idx = random.choices(range(len(texts)), weights=weights, k=1)[0]
+    return texts[idx], extra_effects[idx]
 
 
 def collect_active_tags(active_effects: list[dict], weapon_tags: list[str],

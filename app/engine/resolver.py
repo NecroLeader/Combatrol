@@ -146,6 +146,64 @@ def _add_effect_safe(battle_id: int, side: str, effect_code: str,
         repo.add_effect(battle_id, side, effect_code, expires_at_phase, source)
 
 
+def _apply_narrative_effects(battle_id: int, extra_effects_json: str,
+                              outcome: dict, phase_abs: int) -> None:
+    """Aplica efectos adicionales probabilísticos definidos en el template narrativo.
+
+    Formato de extra_effects_json (array JSON):
+    [
+      {"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":2,"chance":0.25,"source":"narrative"},
+      {"target":"RECEPTOR","effect":"VACILACION","duration_phases":3,"chance":0.10}
+    ]
+    target puede ser ACTOR, RECEPTOR, P1, P2 o ENTORNO.
+    Si chance no está, se aplica siempre (chance=1.0).
+    Si duration_phases no está, usa el valor de DB del efecto.
+    """
+    try:
+        effects = json.loads(extra_effects_json or "[]")
+    except (json.JSONDecodeError, TypeError):
+        return
+
+    phase_winner = outcome.get("phase_winner", "NONE")
+
+    for e in effects:
+        if random.random() > e.get("chance", 1.0):
+            continue
+
+        target_key = e.get("target", "NONE")
+        if target_key == "ACTOR":
+            side = "P1" if phase_winner == "A" else ("P2" if phase_winner == "B" else None)
+        elif target_key == "RECEPTOR":
+            side = "P2" if phase_winner == "A" else ("P1" if phase_winner == "B" else None)
+        elif target_key in ("P1", "P2", "ENTORNO"):
+            side = target_key
+        else:
+            continue
+
+        if side is None:
+            continue
+
+        effect_code = e.get("effect")
+        if not effect_code:
+            continue
+
+        effect_def = rules.get_combat_effect(effect_code)
+        if not effect_def:
+            continue
+
+        dur = e.get("duration_phases")
+        if dur is None:
+            dur = effect_def["duration_phases"]
+
+        if dur == -1:
+            expires = None
+        else:
+            expires = phase_abs + max(dur, 2)  # mínimo 2 para sobrevivir expire_effects
+
+        source = e.get("source", "narrative")
+        _add_effect_safe(battle_id, side, effect_code, expires, source)
+
+
 def _apply_effect(battle_id: int, side: str, effect_code: str | None,
                   current_phase_abs: int) -> str | None:
     """Aplica un efecto a un side. Devuelve el código aplicado o None.
@@ -343,9 +401,18 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     # ── Paso 5: consultar outcome_matrix ────────────────────────────────────
     active_p1 = repo.get_active_effect_codes(battle_id, "P1")
     active_p2 = repo.get_active_effect_codes(battle_id, "P2")
-    # Efectos de entorno (arena initial states, VIDRIO_ROTO, etc.)
-    # Se incluyen en ambos lados para que sus multiplicadores de estado apliquen.
     active_entorno = repo.get_active_effect_codes(battle_id, "ENTORNO")
+
+    # Tags de arma incluidos en estados del jugador para state_outcome_weights.
+    # Permite que "pesado", "rapido", etc. afecten el peso de outcomes vía DB.
+    def _weapon_tags(state: dict | None) -> list[str]:
+        if not state:
+            return []
+        w = rules.get_weapon(state["weapon_code"])
+        return json.loads(w.get("narrative_tags") or "[]") if w else []
+
+    active_p1_full = active_p1 + _weapon_tags(state_p1)
+    active_p2_full = active_p2 + _weapon_tags(state_p2)
 
     # Quién gana el dado (A=P1, B=P2, NONE=empate) — se usa para sesgar el DEFAULT
     dice_leader = "A" if eff_p1 > eff_p2 else ("B" if eff_p2 > eff_p1 else "NONE")
@@ -369,7 +436,7 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     else:
         outcome = _weighted_choice(
             candidates, battle_id,
-            active_p1, active_p2, active_entorno,
+            active_p1_full, active_p2_full, active_entorno,
             dice_leader=dice_leader, diff_band=diff_band,
         )
 
@@ -454,7 +521,10 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
             arena_tags = json.loads(arena_obj.get("narrative_tags") or "[]")
 
     active_tags = collect_active_tags(all_active_effects, list(set(weapon_tags)), arena_tags)
-    narrative = select_narrative(outcome["narrative_pool_tag"], active_tags)
+    narrative, narrative_extra = select_narrative(outcome["narrative_pool_tag"], active_tags)
+
+    # ── Efectos narrativos adicionales (probabilísticos desde el template) ────
+    _apply_narrative_effects(battle_id, narrative_extra, outcome, phase_abs)
 
     # ── Paso 10: verificar condición de fin ──────────────────────────────────
     battle_over = False
