@@ -518,6 +518,22 @@ UPDATE narrative_templates SET extra_effects = '[{"target":"ACTOR","effect":"POS
 UPDATE narrative_templates SET extra_effects = '[{"target":"ACTOR","effect":"VACILACION","duration_phases":2,"chance":0.12,"source":"narrative"},{"target":"RECEPTOR","effect":"VACILACION","duration_phases":2,"chance":0.12,"source":"narrative"}]'
     WHERE pool_tag = 'ATK_ATK_CHOQUE_EPICO';
 
+-- Dominio total → receptor entra en PANICO (20%), actor gana posición
+UPDATE narrative_templates SET extra_effects = '[{"target":"RECEPTOR","effect":"PANICO","duration_phases":3,"chance":0.20,"source":"narrative"},{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":2,"chance":0.45,"source":"narrative"}]'
+    WHERE pool_tag = 'ATK_ATK_DOMINA';
+
+-- Reposición defensiva → actor recupera posición favorable
+UPDATE narrative_templates SET extra_effects = '[{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":3,"chance":0.40,"source":"narrative"}]'
+    WHERE pool_tag = 'DEF_DEF_REPOSICION';
+
+-- Choque brutal → ambos en posición desfavorable (fatiga de impacto)
+UPDATE narrative_templates SET extra_effects = '[{"target":"ACTOR","effect":"POS_DESFAVORABLE","duration_phases":2,"chance":0.15,"source":"narrative"},{"target":"RECEPTOR","effect":"POS_DESFAVORABLE","duration_phases":2,"chance":0.15,"source":"narrative"}]'
+    WHERE pool_tag IN ('ATK_ATK_BRUTAL_A', 'ATK_ATK_BRUTAL_B');
+
+-- Contraataque épico DEF → receptor vacila fuerte, actor sube posición
+UPDATE narrative_templates SET extra_effects = '[{"target":"RECEPTOR","effect":"VACILACION","duration_phases":3,"chance":0.30,"source":"narrative"},{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":3,"chance":0.35,"source":"narrative"}]'
+    WHERE pool_tag = 'DEF_ATK_CONTRA_EPICO';
+
 -- ============================================================
 -- CONFIG DE BATALLA
 -- ============================================================

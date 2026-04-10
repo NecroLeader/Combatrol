@@ -517,6 +517,26 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     if dmg_p2 >= 3.0:
         repo.block_recovery(battle_id, "P2", turn + config.RECOVERY_INTERVAL_TURNS)
 
+    # ── Crits por arma: golpes significativos (≥ 2.5) pueden infligir debuffs extra ──
+    # GRANDE (crit_dmg=4.0): 20% → DESMEMBRADO en el receptor
+    # MEDIANA (crit_dmg=2.0): 15% → POS_DESFAVORABLE en el receptor
+    # PEQUEÑA (crit_dmg=1.0): sin efecto adicional
+    if not outcome.get("is_fatal"):
+        def _try_weapon_crit(attacker_state: dict | None, receptor_side: str, dmg_dealt: float):
+            if not attacker_state or dmg_dealt < 2.5:
+                return
+            w = rules.get_weapon(attacker_state["weapon_code"])
+            if not w:
+                return
+            crit = w.get("crit_dmg", 0.0)
+            if crit >= 4.0 and random.random() < 0.20:   # GRANDE
+                _apply_effect(battle_id, receptor_side, "DESMEMBRADO", phase_abs, source="weapon_crit")
+            elif crit >= 2.0 and random.random() < 0.15:  # MEDIANA
+                _apply_effect(battle_id, receptor_side, "POS_DESFAVORABLE", phase_abs, source="weapon_crit")
+
+        _try_weapon_crit(state_p1, "P2", dmg_p2)
+        _try_weapon_crit(state_p2, "P1", dmg_p1)
+
     # ── Paso 8: acumuladores y racha ─────────────────────────────────────────
     roll_winner_p1 = eff_p1 > eff_p2
     roll_winner_p2 = eff_p2 > eff_p1
@@ -537,7 +557,8 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     # ── Paso 9: narrativa ────────────────────────────────────────────────────
     all_active_effects_p1 = repo.get_active_effects(battle_id, "P1")
     all_active_effects_p2 = repo.get_active_effects(battle_id, "P2")
-    all_active_effects = all_active_effects_p1 + all_active_effects_p2
+    all_active_effects_entorno = repo.get_active_effects(battle_id, "ENTORNO")
+    all_active_effects = all_active_effects_p1 + all_active_effects_p2 + all_active_effects_entorno
 
     # Incluir tags de armas y arena para que los templates puedan filtrar por contexto.
     weapon_tags = []
