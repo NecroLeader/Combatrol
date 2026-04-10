@@ -50,12 +50,14 @@ def _roll_dice(battle_id: int, side: str, phase_abs: int) -> tuple[int, float]:
     raw = random.randint(1, 20)
     mods = _sum_mods(battle_id, side)
     effective = raw + mods
+    # DESMEMBRADO: reduce el cap de tirada de 25 a 20 (miembro perdido limita el poder).
+    cap = 20.0 if repo.has_effect(battle_id, side, "DESMEMBRADO") else CAP
     # Cap superior: overflow → MOMENTUM_OVERFLOW para la siguiente fase.
     # expires_at = phase_abs + 2: survive expire_effects(phase_abs+1) y disponible
     # en _sum_mods de fase phase_abs+1; eliminado al inicio de phase_abs+2.
-    if effective > CAP:
-        overflow = effective - CAP
-        effective = CAP
+    if effective > cap:
+        overflow = effective - cap
+        effective = cap
         repo.remove_effect(battle_id, side, "MOMENTUM_OVERFLOW")
         repo.add_effect(battle_id, side, "MOMENTUM_OVERFLOW",
                         expires_at_phase=phase_abs + 2,
@@ -68,9 +70,16 @@ def _roll_dice(battle_id: int, side: str, phase_abs: int) -> tuple[int, float]:
 # Sesgo por ganador del dado, escala con la magnitud de diferencia.
 # A mayor banda, más determinista el resultado hacia quien dominó el dado.
 _BAND_BIAS = {
-    'BAJA': 1.4, 'REGULAR': 2.5, 'MODERADA': 4.0,
-    'ALTA': 6.0, 'MUY_ALTA': 9.0, 'MAXIMA': 14.0, 'EXTREMA': 22.0,
-    'DEFAULT': 1.0,
+    # Estrictamente monótono con la magnitud de diferencia (core_difference_band):
+    # BAJA(0-3) < MODERADA(4-7) < REGULAR(8-10) < ALTA(11-13) < MUY_ALTA(14-16) < MAXIMA(17-19) < EXTREMA(20+)
+    'BAJA':     1.4,
+    'MODERADA': 2.5,
+    'REGULAR':  4.0,
+    'ALTA':     6.0,
+    'MUY_ALTA': 9.0,
+    'MAXIMA':   14.0,
+    'EXTREMA':  22.0,
+    'DEFAULT':  1.0,
 }
 
 # Bono de banda: ganador de fase recibe modificador temporal para la siguiente fase.
@@ -88,21 +97,39 @@ _BAND_BONUS_EFFECT = {
 def _weighted_choice(candidates: list[dict], battle_id: int,
                      active_states_p1: list[str],
                      active_states_p2: list[str],
+                     active_states_entorno: list[str] | None = None,
                      dice_leader: str = 'NONE',
                      diff_band: str = 'DEFAULT') -> dict:
-    """Elige un outcome de la lista aplicando multiplicadores de estado
-    y sesgo hacia el ganador del dado proporcional a la banda de diferencia."""
-    all_states = list(set(active_states_p1 + active_states_p2))
+    """Elige un outcome aplicando multiplicadores de estado con applies_to (ACTOR/RECEPTOR/BOTH/ENTORNO)
+    y sesgo hacia el ganador del dado proporcional a la banda de diferencia.
+
+    A en el par = P1, B = P2. actor = quien gana la fase (phase_winner), receptor = quien pierde.
+    """
+    active_states_entorno = active_states_entorno or []
 
     # Regla especial: AMBOS CAÍDOS → multiplicadores de CAIDO se anulan.
-    # GDD sección 9: "Ambos CAÍDOS: Multiplicadores se anulan. Vuelve a base_weight."
-    if "CAIDO" in active_states_p1 and "CAIDO" in active_states_p2:
-        all_states = [s for s in all_states if s != "CAIDO"]
+    states_p1 = active_states_p1
+    states_p2 = active_states_p2
+    if "CAIDO" in states_p1 and "CAIDO" in states_p2:
+        states_p1 = [s for s in states_p1 if s != "CAIDO"]
+        states_p2 = [s for s in states_p2 if s != "CAIDO"]
 
     bias = _BAND_BIAS.get(diff_band, 1.0)
     weights = []
     for c in candidates:
-        w = c["base_weight"] * rules.get_state_multipliers(c["outcome_code"], all_states)
+        # Determinar actor/receptor según phase_winner del candidate.
+        # A=P1, B=P2; para NONE no hay distinción clara → P1 como actor (conservador).
+        pw = c["phase_winner"]
+        if pw == 'A':
+            actor, receptor = states_p1, states_p2
+        elif pw == 'B':
+            actor, receptor = states_p2, states_p1
+        else:
+            actor, receptor = states_p1, states_p2
+
+        w = c["base_weight"] * rules.get_state_multipliers(
+            c["outcome_code"], actor, receptor, active_states_entorno
+        )
         if dice_leader != 'NONE' and bias > 1.0:
             if c["phase_winner"] == dice_leader:
                 w *= bias
@@ -229,6 +256,10 @@ def _apply_recovery(battle_id: int, turn: int) -> None:
             continue
         if state["recovery_blocked_until_turn"] >= turn:
             continue
+        # Efectos con blocks_recovery=1 (ej: DESMEMBRADO) impiden recuperación permanentemente.
+        active_effects = repo.get_active_effects(battle_id, side)
+        if any(eff.get("blocks_recovery") for eff in active_effects):
+            continue
         new_cnt = max(0.0, state["counters"] - config.RECOVERY_AMOUNT)
         repo.update_counters(battle_id, side, new_cnt)
 
@@ -285,13 +316,15 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     state_p1 = repo.get_battle_state(battle_id, "P1")
     state_p2 = repo.get_battle_state(battle_id, "P2")
 
-    # ── Paso 1: spam ATK check ────────────────────────────────────────────────
-    _check_fatiga(battle_id, "P1", action_p1, phase_abs)
-    _check_fatiga(battle_id, "P2", action_p2, phase_abs)
-
     # ── Paso 2: tiradas ──────────────────────────────────────────────────────
     roll_p1, eff_p1 = _roll_dice(battle_id, "P1", phase_abs)
     roll_p2, eff_p2 = _roll_dice(battle_id, "P2", phase_abs)
+
+    # ── Paso 1: spam ATK check (DESPUÉS de tirar dados) ──────────────────────
+    # FATIGA se aplica DESPUÉS de la tirada para que no penalice la fase actual,
+    # sino la siguiente (cuando el efecto ya esté activo en _sum_mods).
+    _check_fatiga(battle_id, "P1", action_p1, phase_abs)
+    _check_fatiga(battle_id, "P2", action_p2, phase_abs)
 
     # ── Paso 3: clasificar ───────────────────────────────────────────────────
     power_p1 = rules.get_power_level(eff_p1)
@@ -336,8 +369,7 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     else:
         outcome = _weighted_choice(
             candidates, battle_id,
-            active_p1 + active_entorno,  # entorno aplica como contexto compartido
-            active_p2 + active_entorno,
+            active_p1, active_p2, active_entorno,
             dice_leader=dice_leader, diff_band=diff_band,
         )
 
@@ -407,7 +439,21 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     all_active_effects_p2 = repo.get_active_effects(battle_id, "P2")
     all_active_effects = all_active_effects_p1 + all_active_effects_p2
 
-    active_tags = collect_active_tags(all_active_effects, [], [])
+    # Incluir tags de armas y arena para que los templates puedan filtrar por contexto.
+    weapon_tags = []
+    for ws in (state_p1, state_p2):
+        if ws:
+            w = rules.get_weapon(ws["weapon_code"])
+            if w:
+                weapon_tags.extend(json.loads(w.get("narrative_tags") or "[]"))
+
+    arena_tags = []
+    if battle.get("arena_code"):
+        arena_obj = rules.fetch_one_arena(battle["arena_code"])
+        if arena_obj:
+            arena_tags = json.loads(arena_obj.get("narrative_tags") or "[]")
+
+    active_tags = collect_active_tags(all_active_effects, list(set(weapon_tags)), arena_tags)
     narrative = select_narrative(outcome["narrative_pool_tag"], active_tags)
 
     # ── Paso 10: verificar condición de fin ──────────────────────────────────

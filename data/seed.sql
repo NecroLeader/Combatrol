@@ -51,16 +51,26 @@ VALUES
 ('DESARMADO',       'Desarmado',             -1, 'P1',    -3,  0, 0, '["sin_arma","desesperado"]'),
 ('ARMA_ROTA',       'Arma Rota',             -1, 'P1',    -2,  0, 0, '["improvisa","fragil"]'),
 ('DESMEMBRADO',     'Desmembrado',           -1, 'P1',    -5,  0, 1, '["herida_grave","agonia"]'),
-('CONTRA_EXITOSO',  'Contraataque Exitoso',   0, 'P1',    +4,  0, 0, '["momentum","contraataque"]'),
+-- duration=2: expires_at=N+2 → sobrevive expire_effects(N+1) → _sum_mods lo lee en fase N+1
+('CONTRA_EXITOSO',  'Contraataque Exitoso',   2, 'P1',    +4,  0, 0, '["momentum","contraataque"]'),
 ('POS_FAVORABLE',   'Posición Favorable',    -1, 'P1',    +3,  0, 0, '["ventaja_posicional"]'),
 ('POS_DESFAVORABLE','Posición Desfavorable', -1, 'P1',    -3,  0, 0, '["mala_posicion"]'),
 ('FATIGA',          'Fatiga',                 3, 'P1',    -3,  0, 0, '["agotado","lento"]'),
 ('VACILACION',      'Vacilación',             6, 'P1',    -2,  0, 0, '["miedo","duda","retroceso"]'),
 ('PANICO',          'Pánico',                 3, 'P1',    -3,  1, 0, '["panico","supervivencia"]'),
-('HIPEROFFENSIVO',  'Hiper Ofensivo',         0, 'P1',    +5,  0, 0, '["rabia","impulso","oportunidad"]'),
+-- duration=2: idem CONTRA_EXITOSO (se aplica explícito con expires_at+2 en _apply_effect)
+('HIPEROFFENSIVO',  'Hiper Ofensivo',         2, 'P1',    +5,  0, 0, '["rabia","impulso","oportunidad"]'),
 ('VIDRIO_ROTO',     'Vidrio Roto',            9, 'ENTORNO',0,  0, 0, '["peligro_entorno","cautela"]'),
 ('IMPROVISA',       'Improvisa',             -1, 'P1',     0,  0, 0, '["improvisa","sin_arma_formal"]'),
-('MOMENTUM_OVERFLOW','Momentum Overflow',     0, 'P1',     0,  0, 0, '["racha","overflow"]');
+-- duration=2: el valor real va en source="overflow:X.X"; expira vía remove+add en _roll_dice
+('MOMENTUM_OVERFLOW','Momentum Overflow',     2, 'P1',     0,  0, 0, '["racha","overflow"]'),
+-- Bonos de banda: ganador de fase recibe +power_mod para la siguiente fase (GDD §4)
+('BANDA_MODERADA_BONUS', 'Ventaja Banda Moderada', 2, 'P1', 1, 0, 0, '["momentum","ventaja_banda"]'),
+('BANDA_REGULAR_BONUS',  'Ventaja Banda Regular',  2, 'P1', 2, 0, 0, '["momentum","ventaja_banda"]'),
+('BANDA_ALTA_BONUS',     'Ventaja Banda Alta',     2, 'P1', 3, 0, 0, '["momentum","ventaja_banda","dominio"]'),
+('BANDA_MUY_ALTA_BONUS', 'Ventaja Banda Muy Alta', 2, 'P1', 4, 0, 0, '["momentum","dominio"]'),
+('BANDA_MAXIMA_BONUS',   'Ventaja Banda Máxima',   2, 'P1', 5, 0, 0, '["momentum","dominio","aplastante"]'),
+('BANDA_EXTREMA_BONUS',  'Ventaja Banda Extrema',  2, 'P1', 6, 0, 0, '["momentum","extremo","aplastante"]');
 
 -- ============================================================
 -- ARENA BASE

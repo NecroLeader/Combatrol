@@ -88,17 +88,44 @@ def fetch_one_arena(code: str) -> dict | None:
     return fetch_one("SELECT * FROM arena_pool WHERE code=?", (code,))
 
 
-def get_state_multipliers(outcome_code: str, active_states: list[str]) -> float:
-    """Multiplica el base_weight de un outcome por todos los state_outcome_weights activos."""
-    if not active_states:
+def get_state_multipliers(outcome_code: str,
+                          actor_states: list[str],
+                          receptor_states: list[str],
+                          entorno_states: list[str] | None = None) -> float:
+    """Multiplica el base_weight de un outcome respetando applies_to (ACTOR/RECEPTOR/BOTH/ENTORNO).
+
+    actor_states   → estados del lado que gana la fase (phase_winner)
+    receptor_states → estados del lado que pierde la fase
+    entorno_states  → estados del lado ENTORNO (arena)
+    """
+    entorno_states = entorno_states or []
+    all_relevant = list(set(actor_states + receptor_states + entorno_states))
+    if not all_relevant:
         return 1.0
-    placeholders = ",".join("?" * len(active_states))
+
+    placeholders = ",".join("?" * len(all_relevant))
     rows = fetch_all(
-        f"SELECT multiplier FROM state_outcome_weights "
+        f"SELECT state_code, multiplier, applies_to FROM state_outcome_weights "
         f"WHERE outcome_code=? AND state_code IN ({placeholders})",
-        tuple([outcome_code] + active_states),
+        tuple([outcome_code] + all_relevant),
     )
+    if not rows:
+        return 1.0
+
+    actor_set   = set(actor_states)
+    receptor_set = set(receptor_states)
+    entorno_set  = set(entorno_states)
+
     mult = 1.0
     for r in rows:
-        mult *= r["multiplier"]
+        sc = r["state_code"]
+        at = r["applies_to"]
+        applies = (
+            (at == "ACTOR"    and sc in actor_set)
+            or (at == "RECEPTOR" and sc in receptor_set)
+            or (at == "BOTH"     and (sc in actor_set or sc in receptor_set or sc in entorno_set))
+            or (at == "ENTORNO"  and sc in entorno_set)
+        )
+        if applies:
+            mult *= r["multiplier"]
     return mult

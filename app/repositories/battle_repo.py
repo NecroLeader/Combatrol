@@ -83,7 +83,7 @@ def add_effect(battle_id: int, side: str, effect_code: str,
 
 def get_active_effects(battle_id: int, side: str) -> list[dict]:
     return fetch_all(
-        "SELECT bae.*, ce.narrative_tags "
+        "SELECT bae.*, ce.narrative_tags, ce.blocks_recovery "
         "FROM battle_active_effects bae "
         "LEFT JOIN combat_effects ce ON bae.effect_code = ce.code "
         "WHERE bae.battle_id=? AND bae.side=?",
