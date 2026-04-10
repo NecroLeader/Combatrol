@@ -12,7 +12,7 @@ Los UPDATE de extra_effects sobrescriben '[]' sin romper nada.
 import sqlite3
 import os
 
-DB_PATH = os.environ.get("COMBATROL_DB", "/app/data/combatrol.sqlite")
+DB_PATH = os.environ.get("COMBATROL_DB", "/app/data/combatrol.db")
 
 NEW_STATE_WEIGHTS = [
     # (state_code, outcome_code, multiplier, applies_to)
