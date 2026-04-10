@@ -237,6 +237,7 @@ CREATE TABLE IF NOT EXISTS battle_log (
     effect_applied_p1 TEXT,
     effect_applied_p2 TEXT,
     narrative_text  TEXT NOT NULL,
+    narrative_effects_applied TEXT NOT NULL DEFAULT '[]',
     created_at      TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (battle_id) REFERENCES battles(id) ON DELETE CASCADE
 );

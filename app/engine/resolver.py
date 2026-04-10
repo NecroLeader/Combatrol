@@ -212,7 +212,7 @@ def _apply_effect(battle_id: int, side: str, effect_code: str | None,
 
 
 def _apply_narrative_effects(battle_id: int, extra_effects_json: str,
-                              outcome: dict, phase_abs: int) -> None:
+                              outcome: dict, phase_abs: int) -> list[dict]:
     """Aplica efectos adicionales probabilísticos definidos en el template narrativo.
 
     Delega en _apply_effect para garantizar coherencia de exclusiones y timing
@@ -227,16 +227,20 @@ def _apply_narrative_effects(battle_id: int, extra_effects_json: str,
     target puede ser ACTOR, RECEPTOR, P1, P2 o ENTORNO.
     Si chance no está, se aplica siempre (chance=1.0).
     Si duration_phases no está, usa el valor de DB del efecto.
+    Retorna lista de eventos aplicados para logging de observabilidad.
     """
     try:
         effects = json.loads(extra_effects_json or "[]")
     except (json.JSONDecodeError, TypeError):
-        return
+        return []
 
     phase_winner = outcome.get("phase_winner", "NONE")
+    events: list[dict] = []
 
     for e in effects:
-        if random.random() > e.get("chance", 1.0):
+        roll = random.random()
+        chance = e.get("chance", 1.0)
+        if roll > chance:
             continue
 
         target_key = e.get("target", "NONE")
@@ -258,9 +262,20 @@ def _apply_narrative_effects(battle_id: int, extra_effects_json: str,
 
         # Delegar en _apply_effect para respetar todas las reglas del sistema
         # (exclusiones, ENTORNO routing, CAIDO → HIPEROFFENSIVO, etc.)
-        _apply_effect(battle_id, side, effect_code, phase_abs,
-                      duration_override=e.get("duration_phases"),
-                      source=e.get("source", "narrative"))
+        applied = _apply_effect(battle_id, side, effect_code, phase_abs,
+                                duration_override=e.get("duration_phases"),
+                                source=e.get("source", "narrative"))
+        if applied:
+            events.append({
+                "source": e.get("source", "narrative"),
+                "target": target_key,
+                "side": side,
+                "effect": effect_code,
+                "roll": round(roll, 3),
+                "chance": chance,
+            })
+
+    return events
 
 
 def _check_fatiga(battle_id: int, side: str, action: str, current_phase_abs: int) -> None:
@@ -521,6 +536,7 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     # GRANDE (crit_dmg=4.0): 20% → DESMEMBRADO en el receptor
     # MEDIANA (crit_dmg=2.0): 15% → POS_DESFAVORABLE en el receptor
     # PEQUEÑA (crit_dmg=1.0): sin efecto adicional
+    phase_events: list[dict] = []
     if not outcome.get("is_fatal"):
         def _try_weapon_crit(attacker_state: dict | None, receptor_side: str, dmg_dealt: float):
             if not attacker_state or dmg_dealt < 2.5:
@@ -529,10 +545,17 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
             if not w:
                 return
             crit = w.get("crit_dmg", 0.0)
-            if crit >= 4.0 and random.random() < 0.20:   # GRANDE
-                _apply_effect(battle_id, receptor_side, "DESMEMBRADO", phase_abs, source="weapon_crit")
-            elif crit >= 2.0 and random.random() < 0.15:  # MEDIANA
-                _apply_effect(battle_id, receptor_side, "POS_DESFAVORABLE", phase_abs, source="weapon_crit")
+            roll = random.random()
+            if crit >= 4.0 and roll < 0.20:   # GRANDE
+                applied = _apply_effect(battle_id, receptor_side, "DESMEMBRADO", phase_abs, source="weapon_crit")
+                if applied:
+                    phase_events.append({"source": "weapon_crit", "side": receptor_side,
+                                         "effect": "DESMEMBRADO", "roll": round(roll, 3), "chance": 0.20})
+            elif crit >= 2.0 and roll < 0.15:  # MEDIANA
+                applied = _apply_effect(battle_id, receptor_side, "POS_DESFAVORABLE", phase_abs, source="weapon_crit")
+                if applied:
+                    phase_events.append({"source": "weapon_crit", "side": receptor_side,
+                                         "effect": "POS_DESFAVORABLE", "roll": round(roll, 3), "chance": 0.15})
 
         _try_weapon_crit(state_p1, "P2", dmg_p2)
         _try_weapon_crit(state_p2, "P1", dmg_p1)
@@ -578,7 +601,8 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     narrative, narrative_extra = select_narrative(outcome["narrative_pool_tag"], active_tags)
 
     # ── Efectos narrativos adicionales (probabilísticos desde el template) ────
-    _apply_narrative_effects(battle_id, narrative_extra, outcome, phase_abs)
+    narrative_events = _apply_narrative_effects(battle_id, narrative_extra, outcome, phase_abs)
+    phase_events.extend(narrative_events)
 
     # ── Paso 10: verificar condición de fin ──────────────────────────────────
     battle_over = False
@@ -621,6 +645,7 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
         "effect_applied_p1": applied_p1,
         "effect_applied_p2": applied_p2,
         "narrative_text": narrative,
+        "narrative_effects_applied": json.dumps(phase_events),
     })
 
     # Avanzar turn/phase

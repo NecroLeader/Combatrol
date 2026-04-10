@@ -161,8 +161,8 @@ def log_phase(battle_id: int, data: dict) -> None:
         "difference, difference_band, power_context, action_pair, outcome_code, "
         "phase_winner, roll_winner, counter_dmg_p1, counter_dmg_p2, "
         "counters_p1, counters_p2, effect_applied_p1, effect_applied_p2, "
-        "narrative_text) VALUES "
-        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        "narrative_text, narrative_effects_applied) VALUES "
+        "(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (
             battle_id,
             data["turn_number"], data["phase_number"],
@@ -177,6 +177,7 @@ def log_phase(battle_id: int, data: dict) -> None:
             data["counters_p1"], data["counters_p2"],
             data.get("effect_applied_p1"), data.get("effect_applied_p2"),
             data["narrative_text"],
+            data.get("narrative_effects_applied", "[]"),
         ),
     )
 

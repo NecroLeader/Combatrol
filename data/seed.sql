@@ -153,6 +153,32 @@ VALUES
 ('INT_INT','DEFAULT','DEFAULT','INT_INT_DEFAULT_B_LOGRA','B',        0.0, 0.0,'POS_DESFAVORABLE','POS_FAVORABLE',0.4,'INT_INT_B_LOGRA',0),
 ('INT_INT','DEFAULT','DEFAULT','INT_INT_DEFAULT_CAOS','NONE',        0.0, 0.0, NULL, NULL, 0.2,'INT_INT_CAOS',0);
 
+-- Outcomes adicionales requeridos por state_outcome_weights (batch 5–7).
+-- Existen en la live DB (importados previamente) pero no en los CSVs seed.
+-- INSERT OR IGNORE: no duplica si ya están presentes.
+INSERT OR IGNORE INTO outcome_matrix
+    (action_pair, difference_band, power_context, outcome_code, phase_winner,
+     counter_dmg_A, counter_dmg_B, effect_A, effect_B, base_weight, narrative_pool_tag, is_fatal)
+VALUES
+-- ATK_ATK ALTA MIXED_EXTREME (dominios de un lado con CAIDO)
+('ATK_ATK','ALTA','MIXED_EXTREME','ATK_ATK_ALTA_MX_DOMINIO_A','A', 0.0, 2.5, NULL,'CAIDO',      0.50,'ATK_ATK_DOMINIO_MX_A',0),
+('ATK_ATK','ALTA','MIXED_EXTREME','ATK_ATK_ALTA_MX_DOMINIO_B','B', 2.5, 0.0,'CAIDO', NULL,      0.45,'ATK_ATK_DOMINIO_MX_B',0),
+-- ATK_ATK EXTREMA BALANCED (dominio + fatales)
+('ATK_ATK','EXTREMA','BALANCED','ATK_ATK_EXT_BAL_DOMINIO_A', 'A', 0.0, 3.5, NULL,'CAIDO',      0.50,'ATK_ATK_EXT_DOMINIO_A',0),
+('ATK_ATK','EXTREMA','BALANCED','ATK_ATK_EXT_BAL_DOMINIO_B', 'B', 3.5, 0.0,'CAIDO', NULL,      0.45,'ATK_ATK_EXT_DOMINIO_B',0),
+('ATK_ATK','EXTREMA','BALANCED','ATK_ATK_EXT_BAL_FATAL_A',   'A', 0.0,15.0, NULL,   NULL,      0.03,'FATAL_ESTOCADA',1),
+('ATK_ATK','EXTREMA','BALANCED','ATK_ATK_EXT_BAL_FATAL_B',   'B',15.0, 0.0, NULL,   NULL,      0.02,'FATAL_ESTOCADA',1),
+-- ATK_ATK EXTREMA BOTH_HIGH (dominio + fatales con ambos altos)
+('ATK_ATK','EXTREMA','BOTH_HIGH','ATK_ATK_EXT_BH_DOMINIO_A', 'A', 1.0, 4.0, NULL,'ARMA_ROTA', 0.47,'ATK_ATK_EXT_BH_DOMINIO_A',0),
+('ATK_ATK','EXTREMA','BOTH_HIGH','ATK_ATK_EXT_BH_FATAL_A',   'A', 0.0,15.0, NULL,   NULL,      0.03,'FATAL_ESTOCADA',1),
+('ATK_ATK','EXTREMA','BOTH_HIGH','ATK_ATK_EXT_BH_FATAL_B',   'B',15.0, 0.0, NULL,   NULL,      0.03,'FATAL_ESTOCADA',1),
+-- ATK_ATK EXTREMA MIXED_EXTREME (dominio absoluto del lado B)
+('ATK_ATK','EXTREMA','MIXED_EXTREME','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_B','B', 3.0, 0.0,'CAIDO',NULL, 0.60,'ATK_ATK_DOMINIO_ABSOLUTO_B',0),
+-- ATK_DEF ALTA MIXED_EXTREME (atacante domina con CAIDO en defensor)
+('ATK_DEF','ALTA','MIXED_EXTREME','ATK_DEF_ALTA_MX_DOMINA_A','A', 0.0, 2.5, NULL,'CAIDO',      0.60,'ATK_DEF_DOMINA_MX_A',0),
+-- ATK_DEF EXTREMA BALANCED (fatal del atacante)
+('ATK_DEF','EXTREMA','BALANCED','ATK_DEF_EXT_BAL_FATAL_A',   'A', 0.0,15.0, NULL,   NULL,      0.05,'FATAL_ESTOCADA',1);
+
 -- ============================================================
 -- MULTIPLICADORES DE ESTADO
 -- ============================================================
@@ -164,9 +190,9 @@ INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplie
 ('CAIDO',        'ATK_ATK_EXT_MX_FATAL_REMATE_A',            2.5,  'RECEPTOR'),
 
 -- ── VACIO ────────────────────────────────────────────────────────────────────
--- Amplifica caída al precipicio (×5 sobre outcomes de precipicio)
-('VACIO',        'ATK_INT_EXT_MX_ATAQUE_AL_PRECIPICIO',      5.0,  'BOTH'),
-('VACIO',        'INT_ATK_EXT_MX_ATAQUE_AL_PRECIPICIO',      5.0,  'BOTH'),
+-- Amplifica caída al precipicio (×3.5: fuerte pero no desbocado sin datos de simulación)
+('VACIO',        'ATK_INT_EXT_MX_ATAQUE_AL_PRECIPICIO',      3.5,  'BOTH'),
+('VACIO',        'INT_ATK_EXT_MX_ATAQUE_AL_PRECIPICIO',      3.5,  'BOTH'),
 
 -- ── NIEBLA_EXTREMA ───────────────────────────────────────────────────────────
 -- Amplifica ataques sorpresa y dominio por niebla
@@ -304,20 +330,22 @@ INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplie
 ('HIPEROFFENSIVO','ATK_DEF_EXT_MX_DEFENSOR_COLAPSADO',   1.8, 'ACTOR'),
 
 -- ── CAIDO amplifica fatales sobre el caído (RECEPTOR) ────────────────────────
-('CAIDO','ATK_ATK_EXT_MX_FATAL_REMATE_A',                3.0, 'RECEPTOR'),
-('CAIDO','ATK_ATK_EXT_MX_FATAL_ESTOCADA_A',              3.0, 'RECEPTOR'),
-('CAIDO','ATK_DEF_EXT_MX_FATAL_ESTOCADA',                3.0, 'RECEPTOR'),
-('CAIDO','ATK_DEF_EXT_MX_FATAL_HACHAZO',                 3.0, 'RECEPTOR'),
-('CAIDO','ATK_ATK_EXT_BAL_FATAL_A',                      2.5, 'RECEPTOR'),
-('CAIDO','ATK_DEF_EXT_BAL_FATAL_A',                      2.5, 'RECEPTOR'),
+-- Reducido de ×3.0/2.5 → ×2.0/2.0 para evitar cascadas snowball sin datos de simulación
+('CAIDO','ATK_ATK_EXT_MX_FATAL_REMATE_A',                2.0, 'RECEPTOR'),
+('CAIDO','ATK_ATK_EXT_MX_FATAL_ESTOCADA_A',              2.0, 'RECEPTOR'),
+('CAIDO','ATK_DEF_EXT_MX_FATAL_ESTOCADA',                2.0, 'RECEPTOR'),
+('CAIDO','ATK_DEF_EXT_MX_FATAL_HACHAZO',                 2.0, 'RECEPTOR'),
+('CAIDO','ATK_ATK_EXT_BAL_FATAL_A',                      2.0, 'RECEPTOR'),
+('CAIDO','ATK_DEF_EXT_BAL_FATAL_A',                      2.0, 'RECEPTOR'),
 ('CAIDO','ATK_ATK_EXT_BH_DOMINIO_A',                     2.0, 'RECEPTOR'),
 
 -- ── DESMEMBRADO amplifica dominio extremo sobre el desmembrado ────────────────
-('DESMEMBRADO','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_A',      2.5, 'RECEPTOR'),
-('DESMEMBRADO','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_B',      2.5, 'RECEPTOR'),
+-- Reducido de ×2.5 → ×2.0 en los más extremos; mantener ×2.0 en resto
+('DESMEMBRADO','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_A',      2.0, 'RECEPTOR'),
+('DESMEMBRADO','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_B',      2.0, 'RECEPTOR'),
 ('DESMEMBRADO','ATK_ATK_EXT_BAL_DOMINIO_A',              2.0, 'RECEPTOR'),
 ('DESMEMBRADO','ATK_ATK_EXT_BAL_DOMINIO_B',              2.0, 'RECEPTOR'),
-('DESMEMBRADO','ATK_DEF_EXT_MX_DEFENSOR_COLAPSADO',      2.5, 'RECEPTOR'),
+('DESMEMBRADO','ATK_DEF_EXT_MX_DEFENSOR_COLAPSADO',      2.0, 'RECEPTOR'),
 
 -- ── PANICO en contexto de dominio extremo ─────────────────────────────────────
 ('PANICO','ATK_ATK_ALTA_MX_DOMINIO_A',                   1.8, 'RECEPTOR'),
