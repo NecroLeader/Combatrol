@@ -481,6 +481,23 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
     dmg_p1 = _counter_dmg_for_side(outcome, is_player_A=p1_is_A)
     dmg_p2 = _counter_dmg_for_side(outcome, is_player_A=not p1_is_A)
 
+    # Escalado de daño por arma: el atacante golpea más fuerte según su tamaño de arma.
+    # factor = hits × dmg_per_hit (PEQUEÑA=1.0, MEDIANA=1.0, GRANDE=1.5).
+    # Solo se aplica en outcomes no fatales — los fatales ya están calibrados a MAX_COUNTERS.
+    if not outcome.get("is_fatal"):
+        def _weapon_dmg_factor(state: dict | None) -> float:
+            if not state:
+                return 1.0
+            w = rules.get_weapon(state["weapon_code"])
+            return (w["hits"] * w["dmg_per_hit"]) if w else 1.0
+
+        # P2 toma el daño del ataque de P1 → escala por arma de P1
+        if dmg_p2 > 0:
+            dmg_p2 = round(dmg_p2 * _weapon_dmg_factor(state_p1), 2)
+        # P1 toma el daño del ataque de P2 → escala por arma de P2
+        if dmg_p1 > 0:
+            dmg_p1 = round(dmg_p1 * _weapon_dmg_factor(state_p2), 2)
+
     new_cnt_p1 = state_p1["counters"] + dmg_p1
     new_cnt_p2 = state_p2["counters"] + dmg_p2
 

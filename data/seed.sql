@@ -62,6 +62,12 @@ VALUES
 ('HIPEROFFENSIVO',  'Hiper Ofensivo',         2, 'P1',    +5,  0, 0, '["rabia","impulso","oportunidad"]'),
 ('VIDRIO_ROTO',     'Vidrio Roto',            9, 'ENTORNO',0,  0, 0, '["peligro_entorno","cautela"]'),
 ('IMPROVISA',       'Improvisa',             -1, 'P1',     0,  0, 0, '["improvisa","sin_arma_formal"]'),
+-- Estados de entorno (arenas): no tienen power_mod ni bloqueos propios,
+-- su efecto es a través de state_outcome_weights (multiplican outcomes).
+('ESPACIO_REDUCIDO','Espacio Reducido',      -1, 'ENTORNO',0,  0, 0, '["estrecho","claustrofobia"]'),
+('VACIO',           'Vacío/Precipicio',      -1, 'ENTORNO',0,  0, 0, '["altura","peligro","precipicio"]'),
+('NIEBLA_EXTREMA',  'Niebla Extrema',        -1, 'ENTORNO',0,  0, 0, '["niebla","sorpresa","ocultacion"]'),
+('ARMAS_COLGADAS',  'Armas Colgadas',        -1, 'ENTORNO',0,  0, 0, '["armas","improvisa","entorno_activo"]'),
 -- duration=2: el valor real va en source="overflow:X.X"; expira vía remove+add en _roll_dice
 ('MOMENTUM_OVERFLOW','Momentum Overflow',     2, 'P1',     0,  0, 0, '["racha","overflow"]'),
 -- Bonos de banda: ganador de fase recibe +power_mod para la siguiente fase (GDD §4)
@@ -80,7 +86,7 @@ INSERT OR IGNORE INTO arena_pool (code, name, initial_state_tags, fatal_multipli
 ('campo_abierto',   'Campo Abierto',       '[]',                         1.0, '["exterior","espacio","luz"]'),
 ('sala_armeria',    'Sala de Armería',     '["ARMAS_COLGADAS"]',         1.2, '["interior","armas","madera"]'),
 ('precipicio',      'Borde del Precipicio','["VACIO"]',                  3.0, '["altura","viento","peligro"]'),
-('bodega',          'Bodega',              '[]',                         1.3, '["interior","oscuro","vidrios"]'),
+('bodega',          'Bodega',              '["VIDRIO_ROTO"]',            1.3, '["interior","oscuro","vidrios"]'),
 ('espacio_reducido','Espacio Reducido',    '["ESPACIO_REDUCIDO"]',       1.5, '["estrecho","claustrofobia"]'),
 ('niebla',          'Campo con Niebla',    '["NIEBLA_EXTREMA"]',         2.0, '["niebla","sorpresa","exterior"]');
 
@@ -267,6 +273,180 @@ INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplie
 ('sigilo',       'INT_ATK_DEFAULT_INT_LOGRA',                1.5,  'ACTOR'),
 ('sigilo',       'ATK_INT_DEFAULT_INT_LOGRA',                1.5,  'ACTOR'),
 ('sigilo',       'INT_DEF_DEFAULT_INT_LOGRA',                1.4,  'ACTOR');
+
+INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplier, applies_to) VALUES
+
+-- ── ARMAS_COLGADAS (entorno sala_armeria) ────────────────────────────────────
+-- Sala con armas en las paredes: favorece desarmados y maniobras de improvisa
+('ARMAS_COLGADAS','INT_INT_DEFAULT_A_LOGRA',             1.5, 'BOTH'),
+('ARMAS_COLGADAS','INT_INT_DEFAULT_B_LOGRA',             1.5, 'BOTH'),
+('ARMAS_COLGADAS','ATK_INT_DEFAULT_INT_LOGRA',           1.4, 'BOTH'),
+('ARMAS_COLGADAS','INT_ATK_DEFAULT_INT_LOGRA',           1.4, 'BOTH'),
+
+-- ── VIDRIO_ROTO (entorno bodega) ──────────────────────────────────────────────
+-- Suelo con vidrios: penaliza caídas y favorece daño sobre derribados
+('VIDRIO_ROTO','ATK_ATK_ALTA_MX_DOMINIO_A',              1.5, 'BOTH'),
+('VIDRIO_ROTO','ATK_ATK_ALTA_MX_DOMINIO_B',              1.5, 'BOTH'),
+('VIDRIO_ROTO','ATK_DEF_ALTA_MX_DOMINA_A',               1.4, 'BOTH'),
+
+-- ── HIPEROFFENSIVO en fatales del full matrix ─────────────────────────────────
+('HIPEROFFENSIVO','ATK_ATK_EXT_BAL_FATAL_A',             2.5, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_ATK_EXT_BAL_FATAL_B',             2.5, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_ATK_EXT_BH_FATAL_A',              2.0, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_ATK_EXT_BH_FATAL_B',              2.0, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_DEF_EXT_BAL_FATAL_A',             2.5, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_DEF_EXT_MX_FATAL_ESTOCADA',       2.2, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_DEF_EXT_MX_FATAL_HACHAZO',        2.2, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_ATK_MAX_MX_FATAL_ESTOCADA_A',     2.0, 'ACTOR'),
+-- También amplifica dominio extremo no fatal
+('HIPEROFFENSIVO','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_A',   2.0, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_B',   2.0, 'ACTOR'),
+('HIPEROFFENSIVO','ATK_DEF_EXT_MX_DEFENSOR_COLAPSADO',   1.8, 'ACTOR'),
+
+-- ── CAIDO amplifica fatales sobre el caído (RECEPTOR) ────────────────────────
+('CAIDO','ATK_ATK_EXT_MX_FATAL_REMATE_A',                3.0, 'RECEPTOR'),
+('CAIDO','ATK_ATK_EXT_MX_FATAL_ESTOCADA_A',              3.0, 'RECEPTOR'),
+('CAIDO','ATK_DEF_EXT_MX_FATAL_ESTOCADA',                3.0, 'RECEPTOR'),
+('CAIDO','ATK_DEF_EXT_MX_FATAL_HACHAZO',                 3.0, 'RECEPTOR'),
+('CAIDO','ATK_ATK_EXT_BAL_FATAL_A',                      2.5, 'RECEPTOR'),
+('CAIDO','ATK_DEF_EXT_BAL_FATAL_A',                      2.5, 'RECEPTOR'),
+('CAIDO','ATK_ATK_EXT_BH_DOMINIO_A',                     2.0, 'RECEPTOR'),
+
+-- ── DESMEMBRADO amplifica dominio extremo sobre el desmembrado ────────────────
+('DESMEMBRADO','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_A',      2.5, 'RECEPTOR'),
+('DESMEMBRADO','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_B',      2.5, 'RECEPTOR'),
+('DESMEMBRADO','ATK_ATK_EXT_BAL_DOMINIO_A',              2.0, 'RECEPTOR'),
+('DESMEMBRADO','ATK_ATK_EXT_BAL_DOMINIO_B',              2.0, 'RECEPTOR'),
+('DESMEMBRADO','ATK_DEF_EXT_MX_DEFENSOR_COLAPSADO',      2.5, 'RECEPTOR'),
+
+-- ── PANICO en contexto de dominio extremo ─────────────────────────────────────
+('PANICO','ATK_ATK_ALTA_MX_DOMINIO_A',                   1.8, 'RECEPTOR'),
+('PANICO','ATK_ATK_ALTA_MX_DOMINIO_B',                   1.8, 'RECEPTOR'),
+('PANICO','ATK_DEF_ALTA_MX_DOMINA_A',                    2.0, 'RECEPTOR'),
+
+-- ── POS_FAVORABLE amplifica dominio extremo del posicionado ──────────────────
+('POS_FAVORABLE','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_A',    2.0, 'ACTOR'),
+('POS_FAVORABLE','ATK_ATK_EXT_MX_DOMINIO_ABSOLUTO_B',    2.0, 'ACTOR'),
+('POS_FAVORABLE','ATK_DEF_EXT_MX_DEFENSOR_COLAPSADO',    1.8, 'ACTOR'),
+('POS_FAVORABLE','ATK_ATK_ALTA_MX_DOMINIO_A',            1.5, 'ACTOR'),
+('POS_FAVORABLE','ATK_ATK_ALTA_MX_DOMINIO_B',            1.5, 'ACTOR');
+
+-- ============================================================
+-- NARRATIVA CON REQUIRED_TAGS (weapon/arena context)
+-- Estas plantillas se activan mediante prefix matching cuando
+-- el outcome_matrix tiene un pool_tag que es prefijo del pool_tag aquí.
+-- Requieren tags de arma o arena en active_tags para ser seleccionadas.
+-- ============================================================
+
+INSERT OR IGNORE INTO narrative_templates
+    (pool_tag, template_text, required_tags, excluded_tags, extra_effects, weight)
+VALUES
+-- ── WEAPON: pesado (mandoble) ────────────────────────────────────────────────
+('ATK_DEF_IMPACTO_PESADO',
+ 'El mandoble cae con un impacto devastador. No hay defensa que aguante ese peso.',
+ '["pesado"]','[]','[]',1.5),
+('ATK_DEF_IMPACTO_PESADO_B',
+ 'La brutalidad del acero pesado aplasta la guardia antes de que el defensor pueda reaccionar.',
+ '["pesado"]','[]','[]',1.0),
+('ATK_ATK_DOMINA_PESADO',
+ 'El primer golpe aplasta al otro con el puro peso del metal. La fuerza decide.',
+ '["pesado"]','[]','[]',1.5),
+('ATK_DEF_BLOQUEO_PESADO',
+ 'El defensor aguanta el golpe del mandoble, pero el impacto lo empuja dos pasos hacia atrás.',
+ '["pesado"]','[]','[{"target":"RECEPTOR","effect":"POS_DESFAVORABLE","duration_phases":2,"chance":0.3,"source":"narrative"}]',1.2),
+
+-- ── WEAPON: rapido (espada/daga) ─────────────────────────────────────────────
+('INT_ATK_INT_LOGRA_RAPIDO',
+ 'La hoja ágil se mueve antes de que el golpe llegue. Velocidad pura.',
+ '["rapido"]','[]','[]',1.5),
+('ATK_DEF_CONTRA_RAPIDO',
+ 'La velocidad del contraataque supera la reacción del atacante. La rapidez es el arma.',
+ '["rapido"]','[]','[{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":2,"chance":0.4,"source":"narrative"}]',1.5),
+('ATK_ATK_DOMINA_RAPIDO',
+ 'El acero ágil llega primero. El más rápido siempre gana la iniciativa.',
+ '["rapido"]','[]','[]',1.2),
+
+-- ── WEAPON: sigilo (daga) ────────────────────────────────────────────────────
+('INT_ATK_INT_LOGRA_SIGILO',
+ 'La daga aparece de la sombra. El atacante no vio el movimiento hasta que ya era tarde.',
+ '["sigilo"]','[]','[]',1.5),
+('ATK_INT_INT_LOGRA_SIGILO',
+ 'La maniobra sigilosa redirige el ataque sin que el primero sepa cómo lo hicieron.',
+ '["sigilo"]','[]','[]',1.3),
+('INT_DEF_INT_LOGRA_SIGILO',
+ 'La defensa falla porque no esperaba que la maniobra viniera de ese ángulo oscuro.',
+ '["sigilo"]','[]','[{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":2,"chance":0.3,"source":"narrative"}]',1.2),
+
+-- ── WEAPON: intimidante (mandoble) ───────────────────────────────────────────
+('ATK_ATK_DOMINA_INTIMIDANTE',
+ 'El simple hecho de ver esa hoja descender es suficiente para que el oponente dude.',
+ '["intimidante"]','[]','[{"target":"RECEPTOR","effect":"VACILACION","duration_phases":2,"chance":0.2,"source":"narrative"}]',1.3),
+('DEF_ATK_CONTRA_INTIMIDANTE',
+ 'La defensa sorprende al atacante intimidado por su propio arma. El miedo tiene dos filos.',
+ '["intimidante"]','[]','[]',1.2),
+
+-- ── ARENA: estrecho / claustrofobia (espacio_reducido) ───────────────────────
+('INT_INT_A_LOGRA_ESTRECHO',
+ 'En el espacio apretado, quien se mueve menos es quien tiene ventaja.',
+ '["estrecho"]','[]','[]',1.5),
+('INT_INT_B_LOGRA_ESTRECHO',
+ 'Las paredes trabajan a favor del segundo. El espacio no perdona movimientos amplios.',
+ '["estrecho"]','[]','[]',1.5),
+('ATK_ATK_INTERCAMBIO_ESTRECHO',
+ 'Los golpes se cruzan sin margen para esquivar. El espacio no permite más.',
+ '["estrecho","claustrofobia"]','[]','[]',1.3),
+('ATK_DEF_BLOQUEO_ESTRECHO',
+ 'La defensa se beneficia del espacio comprimido. Hay menos ángulos de ataque posibles.',
+ '["estrecho"]','[]','[]',1.2),
+
+-- ── ARENA: altura / peligro (precipicio) ─────────────────────────────────────
+('ATK_DEF_IMPACTO_PRECIPICIO',
+ 'El golpe empuja hacia el borde. El viento del precipicio es el tercer combatiente.',
+ '["peligro","altura"]','[]','[{"target":"RECEPTOR","effect":"POS_DESFAVORABLE","duration_phases":2,"chance":0.35,"source":"narrative"}]',1.5),
+('INT_INT_CAOS_PRECIPICIO',
+ 'Los dos maniobran al borde. Un paso en falso termina la batalla de una sola vez.',
+ '["altura","peligro"]','[]','[]',1.3),
+('ATK_ATK_DOMINA_PRECIPICIO',
+ 'El vencedor acerca al otro al borde. La victoria huele a abismo.',
+ '["altura"]','[]','[]',1.2),
+
+-- ── ARENA: niebla (niebla_extrema) ───────────────────────────────────────────
+('ATK_ATK_INTERCAMBIO_NIEBLA',
+ 'En la niebla los golpes llegan de donde no se espera. Nadie sabe quién atacó primero.',
+ '["niebla"]','[]','[]',1.5),
+('INT_ATK_INT_LOGRA_NIEBLA',
+ 'La niebla oculta la maniobra. El atacante golpea en el vacío.',
+ '["niebla","sorpresa"]','[]','[]',1.5),
+('ATK_DEF_BLOQUEO_NIEBLA',
+ 'El defensor escucha el golpe antes de verlo. La niebla lo salva por un instante.',
+ '["niebla"]','[]','[]',1.2),
+('DEF_ATK_CONTRA_NIEBLA',
+ 'En la niebla, la defensa pasiva se convierte en trampa. El contraataque surge de la nada.',
+ '["niebla"]','[]','[{"target":"ACTOR","effect":"POS_FAVORABLE","duration_phases":2,"chance":0.3,"source":"narrative"}]',1.3),
+
+-- ── ARENA: armas (sala_armeria) ───────────────────────────────────────────────
+('ATK_INT_ATK_PASA_ARMAS',
+ 'El segundo tropieza con un asta colgada. El primer golpe pasa sin obstáculo.',
+ '["armas"]','[]','[]',1.3),
+('INT_INT_A_LOGRA_ARMAS',
+ 'El primero usa el entorno a su favor, aprovechando las armas colgadas para redirigir.',
+ '["armas","entorno_activo"]','[]','[]',1.2),
+
+-- ── ARENA: interior / oscuro (bodega) ─────────────────────────────────────────
+('INT_INT_CAOS_OSCURO',
+ 'En la oscuridad de la bodega, ninguno sabe dónde está el otro. El caos manda.',
+ '["interior","oscuro"]','[]','[]',1.4),
+('ATK_DEF_IMPACTO_PELIGRO_ENTORNO',
+ 'El impacto hace crujir los estantes. Vidrios caen al suelo complicando cada paso.',
+ '["peligro_entorno"]','[]','[]',1.3),
+
+-- ── ARENA: exterior (campo_abierto) ───────────────────────────────────────────
+('ATK_ATK_DOMINA_EXTERIOR',
+ 'En campo abierto, el más fuerte impone su ritmo desde el principio sin obstáculos.',
+ '["exterior","espacio"]','[]','[]',1.3),
+('DEF_DEF_REPOSICION_EXTERIOR',
+ 'El espacio abierto permite el reposicionamiento limpio. Hay margen para respirar.',
+ '["exterior"]','[]','[]',1.2);
 
 -- ============================================================
 -- NARRATIVA BASE (mínima para que el engine no falle en MVP)
