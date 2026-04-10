@@ -86,6 +86,9 @@ CREATE TABLE IF NOT EXISTS state_outcome_weights (
     applies_to   TEXT NOT NULL     -- RECEPTOR | ACTOR | BOTH
 );
 
+CREATE UNIQUE INDEX IF NOT EXISTS ux_sow_unique
+ON state_outcome_weights(state_code, outcome_code, applies_to);
+
 -- ============================================================
 -- NARRATIVA
 -- ============================================================

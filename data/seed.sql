@@ -184,11 +184,6 @@ VALUES
 -- ============================================================
 
 INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplier, applies_to) VALUES
--- ── CAIDO ───────────────────────────────────────────────────────────────────
--- Amplifica outcomes fatales contra el receptor caído
-('CAIDO',        'ATK_ATK_MAX_MX_FATAL_ESTOCADA_A',          2.5,  'RECEPTOR'),
-('CAIDO',        'ATK_ATK_EXT_MX_FATAL_REMATE_A',            2.5,  'RECEPTOR'),
-
 -- ── VACIO ────────────────────────────────────────────────────────────────────
 -- Amplifica caída al precipicio (×3.5: fuerte pero no desbocado sin datos de simulación)
 ('VACIO',        'ATK_INT_EXT_MX_ATAQUE_AL_PRECIPICIO',      3.5,  'BOTH'),
@@ -231,8 +226,6 @@ INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplie
 ('HIPEROFFENSIVO','ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',      1.5,  'ACTOR'),
 ('HIPEROFFENSIVO','ATK_ATK_EXT_MX_FATAL_REMATE_A',           1.8,  'ACTOR'),
 ('HIPEROFFENSIVO','ATK_ATK_EXT_MX_FATAL_ESTOCADA_A',         1.8,  'ACTOR'),
-('HIPEROFFENSIVO','ATK_DEF_EXT_MX_FATAL_ESTOCADA',           1.8,  'ACTOR'),
-('HIPEROFFENSIVO','ATK_DEF_EXT_MX_FATAL_HACHAZO',            1.8,  'ACTOR'),
 
 -- ── POS_FAVORABLE ────────────────────────────────────────────────────────────
 -- Ventaja posicional amplifica wins del posicionado
@@ -265,8 +258,8 @@ INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplie
 ('DESMEMBRADO',  'ATK_DEF_DEFAULT_IMPACTO_CONTROLADO',       2.0,  'RECEPTOR'),
 ('DESMEMBRADO',  'ATK_ATK_DEFAULT_DOMINA_A',                 1.8,  'RECEPTOR'),
 ('DESMEMBRADO',  'ATK_ATK_DEFAULT_DOMINA_B',                 1.8,  'RECEPTOR'),
-('DESMEMBRADO',  'ATK_DEF_EXT_MX_FATAL_ESTOCADA',           3.0,  'RECEPTOR'),
-('DESMEMBRADO',  'ATK_DEF_EXT_MX_FATAL_HACHAZO',            3.0,  'RECEPTOR'),
+('DESMEMBRADO',  'ATK_DEF_EXT_MX_FATAL_ESTOCADA',           2.0,  'RECEPTOR'),
+('DESMEMBRADO',  'ATK_DEF_EXT_MX_FATAL_HACHAZO',            2.0,  'RECEPTOR'),
 
 -- ── ESPACIO_REDUCIDO (entorno) ───────────────────────────────────────────────
 -- Espacio estrecho favorece INT y penaliza ATK_ATK dominante
@@ -300,7 +293,7 @@ INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplie
 ('sigilo',       'ATK_INT_DEFAULT_INT_LOGRA',                1.5,  'ACTOR'),
 ('sigilo',       'INT_DEF_DEFAULT_INT_LOGRA',                1.4,  'ACTOR');
 
-INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplier, applies_to) VALUES
+INSERT OR REPLACE INTO state_outcome_weights (state_code, outcome_code, multiplier, applies_to) VALUES
 
 -- ── ARMAS_COLGADAS (entorno sala_armeria) ────────────────────────────────────
 -- Sala con armas en las paredes: favorece desarmados y maniobras de improvisa
@@ -331,6 +324,7 @@ INSERT OR IGNORE INTO state_outcome_weights (state_code, outcome_code, multiplie
 
 -- ── CAIDO amplifica fatales sobre el caído (RECEPTOR) ────────────────────────
 -- Reducido de ×3.0/2.5 → ×2.0/2.0 para evitar cascadas snowball sin datos de simulación
+('CAIDO','ATK_ATK_MAX_MX_FATAL_ESTOCADA_A',              2.0, 'RECEPTOR'),
 ('CAIDO','ATK_ATK_EXT_MX_FATAL_REMATE_A',                2.0, 'RECEPTOR'),
 ('CAIDO','ATK_ATK_EXT_MX_FATAL_ESTOCADA_A',              2.0, 'RECEPTOR'),
 ('CAIDO','ATK_DEF_EXT_MX_FATAL_ESTOCADA',                2.0, 'RECEPTOR'),

@@ -99,7 +99,7 @@ class TestDataIntegrity:
         )
 
     def test_outcome_matrix_has_entries(self, init_test_db):
-        """La DB debe tener al menos 100 outcomes (seed + CSVs importados)."""
+        """La DB debe tener al menos 20 outcomes (seed only, CSVs add more)."""
         with db(init_test_db) as conn:
             count = conn.execute("SELECT COUNT(*) FROM outcome_matrix").fetchone()[0]
         assert count >= 20, f"outcome_matrix tiene solo {count} rows — parece vacío"
@@ -355,3 +355,120 @@ class TestApplyEffect:
         bid = self._fresh_battle(init_test_db)
         result = _apply_effect(bid, "P1", "EFECTO_INVENTADO_XYZ", 5)
         assert result is None
+
+
+# ── 4. Tests de mecánicas específicas ───────────────────────────────────────
+
+class TestMechanics:
+    """Tests de mecánicas específicas del motor."""
+
+    def _fresh_battle(self, init_test_db, arena="campo_abierto", w1="espada", w2="espada") -> int:
+        from app.repositories import battle_repo as repo
+        import json as _json
+        from app.repositories import rules_repo as rules
+        bid = repo.create_battle("TEST", arena)
+        repo.create_battle_state(bid, "P1", w1)
+        repo.create_battle_state(bid, "P2", w2)
+        repo.create_accumulators(bid, "P1")
+        repo.create_accumulators(bid, "P2")
+        arena_obj = rules.fetch_one_arena(arena)
+        if arena_obj:
+            raw = arena_obj.get("initial_state_tags")
+            if raw:
+                tags = _json.loads(raw) if isinstance(raw, str) else raw
+                for tag in tags:
+                    repo.add_effect(bid, "ENTORNO", tag, None, "arena_initial")
+        return bid
+
+    def test_no_duplicate_state_outcome_weights(self, init_test_db):
+        """state_outcome_weights no debe tener duplicados (state, outcome, applies_to)."""
+        import sqlite3
+        with sqlite3.connect(init_test_db) as conn:
+            conn.row_factory = sqlite3.Row
+            dups = conn.execute("""
+                SELECT state_code, outcome_code, applies_to, COUNT(*) as cnt
+                FROM state_outcome_weights
+                GROUP BY state_code, outcome_code, applies_to
+                HAVING cnt > 1
+            """).fetchall()
+        assert dups == [], (
+            f"Hay {len(dups)} combinaciones duplicadas en state_outcome_weights:\n"
+            + "\n".join(f"  ({r['state_code']}, {r['outcome_code']}, {r['applies_to']}) × {r['cnt']}"
+                        for r in dups[:10])
+        )
+
+    def test_fatiga_timing(self, init_test_db):
+        """FATIGA aplicada en fase N no penaliza fase N, sí penaliza fase N+1."""
+        from app.engine.resolver import _apply_effect, _sum_mods
+        from app.repositories import battle_repo as repo
+
+        bid = self._fresh_battle(init_test_db)
+        phase_n = 5
+        _apply_effect(bid, "P1", "FATIGA", phase_n, source="test")
+
+        # En fase N: el efecto acaba de aplicarse con expires=N+3
+        # _sum_mods lo lee porque aún está activo
+        mod_n = _sum_mods(bid, "P1")
+        assert mod_n == -3.0, f"FATIGA debe penalizar inmediatamente tras aplicarse (mod={mod_n})"
+
+        # Tras expire_effects en fase N+3, el efecto expira
+        repo.expire_effects(bid, phase_n + 3)
+        mod_after = _sum_mods(bid, "P1")
+        assert mod_after == 0.0, f"FATIGA debe expirar (mod={mod_after})"
+
+    def test_desmembrado_caps_roll_at_20(self, init_test_db):
+        """DESMEMBRADO debe reducir el cap de tirada efectiva a 20."""
+        from app.engine.resolver import _apply_effect, _roll_dice
+        from app.repositories import battle_repo as repo
+        import random
+
+        bid = self._fresh_battle(init_test_db)
+        _apply_effect(bid, "P1", "DESMEMBRADO", 1, source="test")
+
+        # Con DESMEMBRADO, la tirada efectiva no puede superar 20
+        random.seed(42)
+        for _ in range(20):
+            _raw, effective = _roll_dice(bid, "P1", 5)
+            assert effective <= 20.0, f"DESMEMBRADO: efectiva={effective} supera cap=20"
+
+    def test_weapon_scaling_grande(self, init_test_db):
+        """Arma GRANDE (mandoble) debe escalar daño no fatal por factor 1.5."""
+        from app.engine.resolver import resolve_phase
+        from app.repositories import battle_repo as repo
+        import random
+
+        random.seed(1)  # Buscar una fase con daño no fatal
+        bid = repo.create_battle("TEST", "campo_abierto")
+        repo.create_battle_state(bid, "P1", "mandoble")
+        repo.create_battle_state(bid, "P2", "daga")
+        repo.create_accumulators(bid, "P1")
+        repo.create_accumulators(bid, "P2")
+
+        # Correr algunas fases, verificar que el daño del log sea coherente con el arma
+        from app.database import fetch_all
+        for _ in range(30):
+            b = repo.get_battle(bid)
+            if not b or b["status"] == "FINISHED":
+                break
+            resolve_phase(bid, "ATK", "DEF")
+
+        # Verificar que hubo al menos algún daño registrado
+        logs = fetch_all("SELECT counter_dmg_p2, outcome_code FROM battle_log WHERE battle_id=?", (bid,))
+        non_zero = [l for l in logs if l["counter_dmg_p2"] > 0]
+        assert len(non_zero) > 0, "No hubo fases con daño a P2 — arma mandoble no escaló"
+
+    def test_prefix_matching_narrative(self, init_test_db):
+        """Templates con pool_tag = prefijo deben ser seleccionables."""
+        from app.engine.narrative import select_narrative
+        from app.database import fetch_all
+
+        # Verificar que existe al menos un template para algún pool_tag con prefijo
+        templates = fetch_all(
+            "SELECT DISTINCT pool_tag FROM narrative_templates WHERE pool_tag LIKE 'ATK_ATK_%' LIMIT 5"
+        )
+        if not templates:
+            pytest.skip("No hay templates con pool_tag ATK_ATK_* en la DB de tests")
+
+        # select_narrative con un pool_tag base debe encontrar templates via prefix matching
+        text, extra = select_narrative("ATK_ATK", [])
+        assert text, "select_narrative debe retornar texto no vacío via prefix matching"

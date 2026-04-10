@@ -34,6 +34,18 @@ def check(db_path: str = DB_PATH) -> bool:
         issues.append(("ERROR", f"state_outcome_weights: outcome_code '{row['outcome_code']}' "
                                 f"(estado '{row['state_code']}') no existe en outcome_matrix"))
 
+    # ── 1b. Duplicados en state_outcome_weights ────────────────────────────────
+    dup_weights = conn.execute("""
+        SELECT state_code, outcome_code, applies_to, COUNT(*) as cnt
+        FROM state_outcome_weights
+        GROUP BY state_code, outcome_code, applies_to
+        HAVING cnt > 1
+    """).fetchall()
+    for row in dup_weights:
+        issues.append(("ERROR", f"state_outcome_weights: duplicado ({row['state_code']}, "
+                                f"{row['outcome_code']}, {row['applies_to']}) — {row['cnt']} filas, "
+                                f"multiplicador efectivo = producto de todos"))
+
     # ── 2. outcome_matrix effect_A / effect_B → combat_effects ────────────────
     orphan_effects = conn.execute("""
         SELECT outcome_code, effect_A, effect_B

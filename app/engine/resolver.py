@@ -118,7 +118,7 @@ def _weighted_choice(candidates: list[dict], battle_id: int,
     weights = []
     for c in candidates:
         # Determinar actor/receptor según phase_winner del candidate.
-        # A=P1, B=P2; para NONE no hay distinción clara → P1 como actor (conservador).
+        # A=P1, B=P2; para NONE (empate) no hay actor ni receptor → listas vacías.
         pw = c["phase_winner"]
         if pw == 'A':
             actor, receptor = states_p1, states_p2

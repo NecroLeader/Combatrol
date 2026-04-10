@@ -8,9 +8,10 @@ Uso:
 
 Métricas exportadas (una fila por batalla):
   battle_id, arena, weapon_p1, weapon_p2, winner, total_phases, total_turns,
-  is_fatal_ending, counters_p1_final, counters_p2_final,
+  counters_p1_final, counters_p2_final,
   fatal_phases, effect_counts_* (por efecto), narrative_event_counts,
-  weapon_crit_count, avg_dmg_p1, avg_dmg_p2
+  weapon_crit_count, avg_dmg_p1, avg_dmg_p2,
+  first_major_debuff_phase, lead_changes, max_lead
 """
 
 import sys
@@ -74,6 +75,11 @@ def run_battle(arena_code: str | None, w1: str | None, w2: str | None) -> dict:
     weapon_crit_count = 0
     outcome_codes = []
 
+    first_major_debuff_phase = None
+    lead_changes = 0
+    max_lead = 0.0
+    prev_leader = None
+
     # Run battle
     MAX_PHASES = 200  # safety cap
     while total_phases < MAX_PHASES:
@@ -94,6 +100,27 @@ def run_battle(arena_code: str | None, w1: str | None, w2: str | None) -> dict:
         total_dmg_p1 += result.counter_dmg_p1
         total_dmg_p2 += result.counter_dmg_p2
         outcome_codes.append(result.outcome_code)
+
+        # Track snowball metrics
+        s1 = repo.get_battle_state(battle_id, "P1")
+        s2 = repo.get_battle_state(battle_id, "P2")
+        if s1 and s2:
+            lead = abs(s1["counters"] - s2["counters"])
+            if lead > max_lead:
+                max_lead = lead
+            leader = "P1" if s1["counters"] > s2["counters"] else ("P2" if s2["counters"] > s1["counters"] else "TIE")
+            if prev_leader is not None and leader != prev_leader and leader != "TIE" and prev_leader != "TIE":
+                lead_changes += 1
+            prev_leader = leader
+
+        # First major debuff
+        if first_major_debuff_phase is None:
+            major = {"CAIDO", "DESMEMBRADO", "DESARMADO"}
+            for side in ("P1", "P2"):
+                effs = set(repo.get_active_effect_codes(battle_id, side))
+                if major & effs:
+                    first_major_debuff_phase = total_phases
+                    break
 
         # Count fatal outcomes
         om_row = _get_outcome(result.outcome_code)
@@ -143,6 +170,9 @@ def run_battle(arena_code: str | None, w1: str | None, w2: str | None) -> dict:
         "weapon_crits": weapon_crit_count,
         "fatal_rate": round(fatal_phases / total_phases, 3) if total_phases else 0,
         "hit_cap": 1 if total_phases >= MAX_PHASES else 0,
+        "first_major_debuff_phase": first_major_debuff_phase or 0,
+        "lead_changes": lead_changes,
+        "max_lead": round(max_lead, 2),
     }
     for eff in TRACKED_EFFECTS:
         row[f"eff_{eff.lower()}"] = effect_counts.get(eff, 0)
@@ -229,6 +259,9 @@ def main():
     print(f"  Avg fatal_rate:     {avg_fatal:.3f}")
     print(f"  Avg weapon_crits:   {avg_crits:.2f}")
     print(f"  Avg narrative_evts: {avg_narr:.2f}")
+    avg_lead_changes = sum(r["lead_changes"] for r in rows) / n
+    avg_first_debuff = sum(r["first_major_debuff_phase"] for r in rows if r["first_major_debuff_phase"] > 0)
+    print(f"  Avg lead_changes:   {avg_lead_changes:.2f}")
     if cap_count:
         print(f"  ⚠ {cap_count} batallas alcanzaron el cap de 200 fases (sin fin)")
     print(f"\nCSV guardado: {args.output}")
