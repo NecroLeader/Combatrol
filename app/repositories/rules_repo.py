@@ -1,5 +1,7 @@
 """Consultas a tablas de reglas estáticas (core_*)."""
 
+import random
+
 from app.database import fetch_all, fetch_one
 
 
@@ -86,6 +88,25 @@ def get_random_arena() -> dict | None:
 
 def fetch_one_arena(code: str) -> dict | None:
     return fetch_one("SELECT * FROM arena_pool WHERE code=?", (code,))
+
+
+def get_skill(code: str) -> dict | None:
+    return fetch_one("SELECT * FROM skill_pool WHERE code=?", (code,))
+
+
+def get_weighted_random_skill() -> dict | None:
+    """Devuelve una skill aleatoria con probabilidad ponderada por tier (SKILL_THRESHOLDS en config)."""
+    from app.config import SKILL_THRESHOLDS
+    roll = random.randint(1, SKILL_THRESHOLDS[-1][0])
+    tier = SKILL_THRESHOLDS[0][1]
+    for threshold, t in SKILL_THRESHOLDS:
+        if roll <= threshold:
+            tier = t
+            break
+    row = fetch_one(
+        "SELECT * FROM skill_pool WHERE tier=? ORDER BY RANDOM() LIMIT 1", (tier,)
+    )
+    return row or fetch_one("SELECT * FROM skill_pool ORDER BY RANDOM() LIMIT 1")
 
 
 def get_state_multipliers(outcome_code: str,

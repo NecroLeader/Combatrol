@@ -14,6 +14,24 @@ from app.schemas.battle import PhaseResult
 
 CAP = 25.0   # máximo de tirada efectiva antes de MOMENTUM_OVERFLOW
 
+# Efectos "suaves" que refrescan su expiración al re-aplicarse (en vez de ignorarse).
+# Efectos severos (DESMEMBRADO, CAIDO, DESARMADO) mantienen el comportamiento "no refresh".
+_REFRESH_EFFECTS = frozenset({
+    "POS_FAVORABLE", "POS_DESFAVORABLE", "VACILACION", "PANICO", "FATIGA",
+    "HIPEROFFENSIVO",
+    "BANDA_MODERADA_BONUS", "BANDA_REGULAR_BONUS", "BANDA_ALTA_BONUS",
+    "BANDA_MUY_ALTA_BONUS", "BANDA_MAXIMA_BONUS", "BANDA_EXTREMA_BONUS",
+})
+
+# Efectos que se consideran "debuffs" para IMMUNITY e DEBUFF_RESIST skills.
+_DEBUFFS = frozenset({
+    "CAIDO", "DESMEMBRADO", "DESARMADO", "ARMA_ROTA",
+    "FATIGA", "VACILACION", "PANICO", "POS_DESFAVORABLE",
+})
+
+# Tipos de skill cuyo power_mod se suma directamente a la tirada efectiva.
+_SKILL_ROLL_TYPES = frozenset({"POWER_MOD", "DEBUFF_RESIST"})
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
@@ -25,7 +43,7 @@ def _phase_abs(turn: int, phase: int) -> int:
 
 
 def _sum_mods(battle_id: int, side: str) -> float:
-    """Suma los power_mod de todos los efectos activos para un lado."""
+    """Suma los power_mod de todos los efectos activos y skills POWER_MOD/DEBUFF_RESIST."""
     effects = repo.get_active_effects(battle_id, side)
     total = 0.0
     for eff in effects:
@@ -42,6 +60,11 @@ def _sum_mods(battle_id: int, side: str) -> float:
             effect_def = rules.get_combat_effect(code)
             if effect_def:
                 total += effect_def["power_mod"]
+    # Skills: POWER_MOD y DEBUFF_RESIST aportan su power_mod a la tirada
+    for sk in repo.get_battle_skills(battle_id, side):
+        skill_def = rules.get_skill(sk["skill_code"])
+        if skill_def and skill_def["effect_type"] in _SKILL_ROLL_TYPES:
+            total += skill_def["power_mod"]
     return total
 
 
@@ -143,9 +166,13 @@ def _weighted_choice(candidates: list[dict], battle_id: int,
 
 def _add_effect_safe(battle_id: int, side: str, effect_code: str,
                      expires_at_phase: int | None, source: str) -> None:
-    """Agrega efecto solo si no está ya activo (evita duplicados de permanentes)."""
-    if not repo.has_effect(battle_id, side, effect_code):
-        repo.add_effect(battle_id, side, effect_code, expires_at_phase, source)
+    """Agrega efecto si no está activo. Para efectos suaves (_REFRESH_EFFECTS),
+    refresca la expiración al mayor valor (max(old, new)) en vez de ignorar el trigger."""
+    if repo.has_effect(battle_id, side, effect_code):
+        if effect_code in _REFRESH_EFFECTS and expires_at_phase is not None:
+            repo.refresh_effect_expiration(battle_id, side, effect_code, expires_at_phase)
+        return
+    repo.add_effect(battle_id, side, effect_code, expires_at_phase, source)
 
 
 def _apply_effect(battle_id: int, side: str, effect_code: str | None,
@@ -172,6 +199,21 @@ def _apply_effect(battle_id: int, side: str, effect_code: str | None,
 
     # Efectos de entorno van al lado ENTORNO sin importar quién los activó
     effective_side = "ENTORNO" if effect_def["applies_to"] == "ENTORNO" else side
+
+    # Skills: IMMUNITY bloquea efectos específicos; DEBUFF_RESIST tiene 50% de bloquear debuffs.
+    # Solo aplica a lados P1/P2 (no ENTORNO) y solo para efectos de la lista _DEBUFFS.
+    if effective_side in ("P1", "P2") and effect_code in _DEBUFFS:
+        for sk in repo.get_battle_skills(battle_id, effective_side):
+            skill_def = rules.get_skill(sk["skill_code"])
+            if not skill_def:
+                continue
+            if skill_def["effect_type"] == "IMMUNITY":
+                immune_to = json.loads(skill_def.get("special_tags") or "[]")
+                if effect_code in immune_to:
+                    return None  # Inmune: efecto bloqueado
+            elif skill_def["effect_type"] == "DEBUFF_RESIST":
+                if random.random() < 0.50:
+                    return None  # Resistido (50%)
 
     # POS_FAVORABLE y POS_DESFAVORABLE son mutuamente excluyentes por jugador.
     # Se aplica siempre, sin importar si el efecto viene de outcome_matrix o narrativa.
@@ -278,6 +320,17 @@ def _apply_narrative_effects(battle_id: int, extra_effects_json: str,
     return events
 
 
+def _skill_crit_bonus(battle_id: int, side: str) -> float:
+    """Bonus de probabilidad de crit aportado por skills CRIT_BOOST del atacante.
+    Cada power_mod en una skill CRIT_BOOST suma +5% de probabilidad de crit."""
+    total = 0.0
+    for sk in repo.get_battle_skills(battle_id, side):
+        skill_def = rules.get_skill(sk["skill_code"])
+        if skill_def and skill_def["effect_type"] == "CRIT_BOOST":
+            total += skill_def["power_mod"] * 0.05
+    return total
+
+
 def _check_fatiga(battle_id: int, side: str, action: str, current_phase_abs: int) -> None:
     """Penaliza spam de ATK con FATIGA."""
     state = repo.get_battle_state(battle_id, side)
@@ -364,6 +417,18 @@ def _effect_for_side(outcome: dict, is_player_A: bool) -> str | None:
     if is_player_A:
         return outcome.get("effect_A")
     return outcome.get("effect_B")
+
+
+def setup_battle_skills(battle_id: int) -> dict[str, str]:
+    """Asigna una habilidad aleatoria ponderada por tier a P1 y P2 al inicio de batalla.
+    Retorna {side: skill_code} de las habilidades asignadas."""
+    assigned: dict[str, str] = {}
+    for side in ("P1", "P2"):
+        skill = rules.get_weighted_random_skill()
+        if skill:
+            repo.create_battle_skill(battle_id, side, skill["code"], turn=1)
+            assigned[side] = skill["code"]
+    return assigned
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -546,16 +611,20 @@ def resolve_phase(battle_id: int, action_p1: str, action_p2: str) -> PhaseResult
                 return
             crit = w.get("crit_dmg", 0.0)
             roll = random.random()
-            if crit >= 4.0 and roll < 0.20:   # GRANDE
+            attacker_side = "P1" if receptor_side == "P2" else "P2"
+            crit_bonus = _skill_crit_bonus(battle_id, attacker_side)
+            if crit >= 4.0 and roll < (0.20 + crit_bonus):   # GRANDE
+                chance = round(0.20 + crit_bonus, 3)
                 applied = _apply_effect(battle_id, receptor_side, "DESMEMBRADO", phase_abs, source="weapon_crit")
                 if applied:
                     phase_events.append({"source": "weapon_crit", "side": receptor_side,
-                                         "effect": "DESMEMBRADO", "roll": round(roll, 3), "chance": 0.20})
-            elif crit >= 2.0 and roll < 0.15:  # MEDIANA
+                                         "effect": "DESMEMBRADO", "roll": round(roll, 3), "chance": chance})
+            elif crit >= 2.0 and roll < (0.15 + crit_bonus):  # MEDIANA
+                chance = round(0.15 + crit_bonus, 3)
                 applied = _apply_effect(battle_id, receptor_side, "POS_DESFAVORABLE", phase_abs, source="weapon_crit")
                 if applied:
                     phase_events.append({"source": "weapon_crit", "side": receptor_side,
-                                         "effect": "POS_DESFAVORABLE", "roll": round(roll, 3), "chance": 0.15})
+                                         "effect": "POS_DESFAVORABLE", "roll": round(roll, 3), "chance": chance})
 
         _try_weapon_crit(state_p1, "P2", dmg_p2)
         _try_weapon_crit(state_p2, "P1", dmg_p1)

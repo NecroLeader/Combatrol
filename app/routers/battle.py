@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from app.schemas.battle import BattleStartRequest, BattlePhaseRequest, PhaseResult, SimulateTurnRequest
 from app.repositories import battle_repo as repo
 from app.repositories import rules_repo as rules
-from app.engine.resolver import resolve_phase
+from app.engine.resolver import resolve_phase, setup_battle_skills
 from app.engine.ai import choose_action
 
 router = APIRouter(prefix="/battle", tags=["battle"])
@@ -41,12 +41,15 @@ def start_battle(payload: BattleStartRequest) -> dict:
             for tag in tags:
                 repo.add_effect(battle_id, "ENTORNO", tag, None, "arena_initial")
 
+    # Asignar skills aleatorias a cada jugador
+    skills = setup_battle_skills(battle_id)
+
     return {
         "battle_id": battle_id,
         "mode": payload.mode,
         "arena": arena_code,
-        "p1": {"name": payload.name_p1, "weapon": w1["name"]},
-        "p2": {"name": payload.name_p2, "weapon": w2["name"]},
+        "p1": {"name": payload.name_p1, "weapon": w1["name"], "skill": skills.get("P1")},
+        "p2": {"name": payload.name_p2, "weapon": w2["name"], "skill": skills.get("P2")},
     }
 
 

@@ -472,3 +472,121 @@ class TestMechanics:
         # select_narrative con un pool_tag base debe encontrar templates via prefix matching
         text, extra = select_narrative("ATK_ATK", [])
         assert text, "select_narrative debe retornar texto no vacío via prefix matching"
+
+
+# ── 5. Tests de Skills y Refresh Expiration ──────────────────────────────────
+
+class TestSkillsAndRefresh:
+    """Tests del sistema de skills y política de refresh de expiración."""
+
+    def _fresh_battle(self, init_test_db) -> int:
+        from app.repositories import battle_repo as repo
+        bid = repo.create_battle("TEST", "campo_abierto")
+        repo.create_battle_state(bid, "P1", "espada")
+        repo.create_battle_state(bid, "P2", "espada")
+        repo.create_accumulators(bid, "P1")
+        repo.create_accumulators(bid, "P2")
+        return bid
+
+    def test_skill_pool_has_all_tiers(self, init_test_db):
+        """skill_pool debe tener skills para todos los tiers definidos."""
+        import sqlite3
+        with sqlite3.connect(init_test_db) as conn:
+            conn.row_factory = sqlite3.Row
+            tiers = {r["tier"] for r in conn.execute("SELECT DISTINCT tier FROM skill_pool").fetchall()}
+        expected = {"COMUN", "POCO_COMUN", "RARA", "LEGENDARIA", "EPICA"}
+        assert expected <= tiers, f"Faltan tiers: {expected - tiers}"
+
+    def test_power_mod_skill_increases_sum_mods(self, init_test_db):
+        """Una skill POWER_MOD debe incrementar el modificador de tirada."""
+        from app.engine.resolver import _sum_mods
+        from app.repositories import battle_repo as repo
+
+        bid = self._fresh_battle(init_test_db)
+        base = _sum_mods(bid, "P1")
+        repo.create_battle_skill(bid, "P1", "RESISTENCIA", turn=1)
+        boosted = _sum_mods(bid, "P1")
+        assert boosted == base + 1.0, \
+            f"RESISTENCIA (+1) debe aumentar _sum_mods en 1 (base={base}, boosted={boosted})"
+
+    def test_immunity_skill_blocks_specific_debuff(self, init_test_db):
+        """GUARDIA_ALTA (IMMUNITY a POS_DESFAVORABLE) debe bloquear ese efecto."""
+        from app.engine.resolver import _apply_effect
+        from app.repositories import battle_repo as repo
+
+        bid = self._fresh_battle(init_test_db)
+        repo.create_battle_skill(bid, "P1", "GUARDIA_ALTA", turn=1)
+        _apply_effect(bid, "P1", "POS_DESFAVORABLE", 5)
+        effs = repo.get_active_effect_codes(bid, "P1")
+        assert "POS_DESFAVORABLE" not in effs, \
+            "GUARDIA_ALTA debe bloquear POS_DESFAVORABLE via IMMUNITY"
+
+    def test_immunity_does_not_block_other_debuffs(self, init_test_db):
+        """GUARDIA_ALTA no debe bloquear debuffs fuera de su lista de inmunidad."""
+        from app.engine.resolver import _apply_effect
+        from app.repositories import battle_repo as repo
+
+        bid = self._fresh_battle(init_test_db)
+        repo.create_battle_skill(bid, "P1", "GUARDIA_ALTA", turn=1)
+        _apply_effect(bid, "P1", "FATIGA", 5)
+        effs = repo.get_active_effect_codes(bid, "P1")
+        assert "FATIGA" in effs, \
+            "GUARDIA_ALTA no debe bloquear FATIGA (no está en su lista)"
+
+    def test_setup_battle_skills_assigns_one_per_side(self, init_test_db):
+        """setup_battle_skills debe asignar exactamente una habilidad a P1 y P2."""
+        from app.engine.resolver import setup_battle_skills
+        from app.repositories import battle_repo as repo
+
+        bid = self._fresh_battle(init_test_db)
+        assigned = setup_battle_skills(bid)
+        p1_skills = repo.get_battle_skills(bid, "P1")
+        p2_skills = repo.get_battle_skills(bid, "P2")
+        assert len(p1_skills) == 1, f"P1 debe tener 1 skill, tiene {len(p1_skills)}"
+        assert len(p2_skills) == 1, f"P2 debe tener 1 skill, tiene {len(p2_skills)}"
+        assert "P1" in assigned and "P2" in assigned
+
+    def test_refresh_expiration_extends_soft_effect(self, init_test_db):
+        """Re-aplicar un efecto suave debe refrescar la expiración al mayor valor."""
+        from app.engine.resolver import _add_effect_safe
+        from app.repositories import battle_repo as repo
+
+        bid = self._fresh_battle(init_test_db)
+        _add_effect_safe(bid, "P1", "VACILACION", 10, "test")
+        _add_effect_safe(bid, "P1", "VACILACION", 20, "test2")
+
+        row = repo.get_active_effects(bid, "P1")
+        vac = next((r for r in row if r["effect_code"] == "VACILACION"), None)
+        assert vac is not None, "VACILACION debe seguir activa"
+        assert vac["expires_at_phase"] == 20, \
+            f"Expiración debe refrescarse a 20, es {vac['expires_at_phase']}"
+
+    def test_refresh_does_not_shorten_expiration(self, init_test_db):
+        """Refrescar con valor menor no debe acortar la expiración existente."""
+        from app.engine.resolver import _add_effect_safe
+        from app.repositories import battle_repo as repo
+
+        bid = self._fresh_battle(init_test_db)
+        _add_effect_safe(bid, "P1", "PANICO", 30, "test")
+        _add_effect_safe(bid, "P1", "PANICO", 10, "test2")  # refresh con valor menor
+
+        row = repo.get_active_effects(bid, "P1")
+        pan = next((r for r in row if r["effect_code"] == "PANICO"), None)
+        assert pan is not None
+        assert pan["expires_at_phase"] == 30, \
+            f"Expiración no debe reducirse (era 30, intento refresh a 10, queda {pan['expires_at_phase']})"
+
+    def test_hard_effect_not_refreshed(self, init_test_db):
+        """DESMEMBRADO (efecto severo) no debe refrescar su expiración."""
+        from app.engine.resolver import _add_effect_safe
+        from app.repositories import battle_repo as repo
+
+        bid = self._fresh_battle(init_test_db)
+        _add_effect_safe(bid, "P1", "DESMEMBRADO", 10, "test")
+        _add_effect_safe(bid, "P1", "DESMEMBRADO", 30, "test2")  # intento refresh
+
+        row = repo.get_active_effects(bid, "P1")
+        desm = next((r for r in row if r["effect_code"] == "DESMEMBRADO"), None)
+        assert desm is not None
+        assert desm["expires_at_phase"] == 10, \
+            f"DESMEMBRADO NO debe refrescar (debe quedar en 10, está en {desm['expires_at_phase']})"

@@ -123,6 +123,16 @@ def has_effect(battle_id: int, side: str, effect_code: str) -> bool:
     return row is not None
 
 
+def refresh_effect_expiration(battle_id: int, side: str, effect_code: str, new_expires: int) -> None:
+    """Actualiza expires_at_phase al máximo entre el valor actual y new_expires."""
+    execute(
+        "UPDATE battle_active_effects "
+        "SET expires_at_phase=MAX(COALESCE(expires_at_phase, 0), ?) "
+        "WHERE battle_id=? AND side=? AND effect_code=?",
+        (new_expires, battle_id, side, effect_code),
+    )
+
+
 # ── Acumuladores ─────────────────────────────────────────────────────────────
 
 def create_accumulators(battle_id: int, side: str) -> None:
@@ -181,6 +191,26 @@ def log_phase(battle_id: int, data: dict) -> None:
         ),
     )
 
+
+# ── Skills de batalla ────────────────────────────────────────────────────────
+
+def create_battle_skill(battle_id: int, side: str, skill_code: str,
+                        turn: int, expires_at_phase: int | None = None) -> None:
+    execute(
+        "INSERT INTO battle_skills (battle_id, side, skill_code, activated_at_turn, expires_at_phase) "
+        "VALUES (?,?,?,?,?)",
+        (battle_id, side, skill_code, turn, expires_at_phase),
+    )
+
+
+def get_battle_skills(battle_id: int, side: str) -> list[dict]:
+    return fetch_all(
+        "SELECT * FROM battle_skills WHERE battle_id=? AND side=?",
+        (battle_id, side),
+    )
+
+
+# ── Log ──────────────────────────────────────────────────────────────────────
 
 def get_battle_log(battle_id: int) -> list[dict]:
     return fetch_all(

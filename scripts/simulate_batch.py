@@ -24,7 +24,7 @@ from collections import defaultdict
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.engine.resolver import resolve_phase
+from app.engine.resolver import resolve_phase, setup_battle_skills
 from app.engine.ai import choose_action
 from app.repositories import battle_repo as repo
 from app.repositories import rules_repo as rules
@@ -57,6 +57,7 @@ def run_battle(arena_code: str | None, w1: str | None, w2: str | None) -> dict:
     repo.create_battle_state(battle_id, "P2", weapon2["code"])
     repo.create_accumulators(battle_id, "P1")
     repo.create_accumulators(battle_id, "P2")
+    skills = setup_battle_skills(battle_id)
 
     if arena:
         raw_tags = arena.get("initial_state_tags")
@@ -173,6 +174,8 @@ def run_battle(arena_code: str | None, w1: str | None, w2: str | None) -> dict:
         "first_major_debuff_phase": first_major_debuff_phase or 0,
         "lead_changes": lead_changes,
         "max_lead": round(max_lead, 2),
+        "skill_p1": skills.get("P1", "NONE"),
+        "skill_p2": skills.get("P2", "NONE"),
     }
     for eff in TRACKED_EFFECTS:
         row[f"eff_{eff.lower()}"] = effect_counts.get(eff, 0)

@@ -557,6 +557,27 @@ UPDATE narrative_templates SET extra_effects = '[{"target":"RECEPTOR","effect":"
     WHERE pool_tag = 'DEF_ATK_CONTRA_EPICO';
 
 -- ============================================================
+-- SKILLS
+-- ============================================================
+
+INSERT OR IGNORE INTO skill_pool (code, name, tier, effect_type, power_mod, duration_phases, special_tags) VALUES
+-- COMUN: efectos simples, accesibles
+('RESISTENCIA',        'Resistencia',          'COMUN',       'POWER_MOD',    1, -1, '[]'),
+('GUARDIA_ALTA',       'Guardia Alta',          'COMUN',       'IMMUNITY',     0, -1, '["POS_DESFAVORABLE"]'),
+-- POCO_COMUN: un nivel de especialización
+('REFLEJOS',           'Reflejos',              'POCO_COMUN',  'DEBUFF_RESIST',1, -1, '[]'),
+('FUERZA_BRUTA',       'Fuerza Bruta',          'POCO_COMUN',  'POWER_MOD',    2, -1, '[]'),
+('VELOCIDAD',          'Velocidad',             'POCO_COMUN',  'CRIT_BOOST',   1, -1, '[]'),
+-- RARA: ventajas claras en combate
+('TEMPLE_ACERO',       'Temple de Acero',       'RARA',        'POWER_MOD',    2, -1, '[]'),
+('INSTINTO_CAZADOR',   'Instinto del Cazador',  'RARA',        'CRIT_BOOST',   2, -1, '[]'),
+-- LEGENDARIA: definitorias de estilo
+('MAESTRIA_MARCIAL',   'Maestría Marcial',      'LEGENDARIA',  'POWER_MOD',    3, -1, '[]'),
+('VOLUNTAD_INDOMABLE', 'Voluntad Indomable',    'LEGENDARIA',  'IMMUNITY',     0, -1, '["PANICO","VACILACION"]'),
+-- EPICA: única, cambia el juego
+('BERSERKER',          'Berserker',             'EPICA',       'POWER_MOD',    4, -1, '[]');
+
+-- ============================================================
 -- CONFIG DE BATALLA
 -- ============================================================
 -- (se consulta en runtime, hardcodeado como constantes en config.py también)
